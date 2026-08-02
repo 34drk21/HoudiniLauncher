@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HouD2 DB Admin</title>
+  <style>
+    :root{color-scheme:dark;--bg:#181a1b;--panel:#202324;--line:#3a3f41;--text:#edf0f1;--muted:#aeb6b9;--accent:#66b3a6;--danger:#e6766e;--hover:#2a2e30}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:600 14px/1.45 "Segoe UI",sans-serif;letter-spacing:0}
+    button,input,select{font:inherit}button{border:1px solid var(--line);background:#292d2f;color:var(--text);height:36px;padding:0 13px;border-radius:5px;cursor:pointer}button:hover{background:#34393b}button.primary{border-color:#4c9287;background:#32675f}button.danger{border-color:#874943;color:#ffaaa3}button:disabled{opacity:.45;cursor:default}
+    header{height:64px;display:flex;align-items:center;gap:18px;padding:0 22px;border-bottom:1px solid var(--line);background:#1d1f20}h1{font-size:19px;margin:0}.sub{color:var(--muted);font-weight:500}.tabs{margin-left:auto;display:flex;gap:4px}.tabs button.active{background:#3a4142;border-color:#657174}
+    main{display:grid;grid-template-columns:240px minmax(0,1fr);height:calc(100vh - 64px)}aside{border-right:1px solid var(--line);padding:14px;background:#1d1f20;overflow:auto}.table-button{width:100%;text-align:left;margin-bottom:5px;display:flex;justify-content:space-between}.table-button.active{border-color:var(--accent);background:#293b38}.count{color:var(--muted)}
+    .content{min-width:0;display:flex;flex-direction:column}.toolbar{min-height:62px;display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}input,select{height:36px;border:1px solid var(--line);border-radius:4px;background:#25292a;color:var(--text);padding:0 10px}#search{width:min(420px,40vw)}.spacer{flex:1}.status{color:var(--muted);font-weight:500;white-space:nowrap}
+    .table-wrap{overflow:auto;flex:1}table{border-collapse:separate;border-spacing:0;min-width:100%;font-weight:500}th,td{padding:10px 12px;border-right:1px solid #303436;border-bottom:1px solid #303436;white-space:nowrap;text-align:left;max-width:420px;overflow:hidden;text-overflow:ellipsis}th{position:sticky;top:0;background:#272b2c;color:#dfe5e7;z-index:2;cursor:pointer}tr:hover td{background:var(--hover)}td.null{color:#70787b;font-style:italic}.pager{height:52px;display:flex;align-items:center;justify-content:center;gap:10px;border-top:1px solid var(--line)}
+    #admin{display:none;padding:22px;overflow:auto}.admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);max-width:1100px}.admin-section{background:var(--panel);padding:18px;min-height:170px}.admin-section h2{font-size:16px;margin:0 0 7px}.admin-section p{color:var(--muted);font-weight:500;margin:0 0 16px}.actions{display:flex;gap:8px;flex-wrap:wrap}pre{white-space:pre-wrap;background:#151718;border:1px solid var(--line);padding:12px;border-radius:4px;min-height:70px;color:#cbd4d6;font-weight:500}.hidden{display:none!important}
+    @media(max-width:760px){main{grid-template-columns:1fr}aside{display:none}.sub{display:none}.toolbar{flex-wrap:wrap}#search{width:100%}.spacer{display:none}}
+  </style>
+</head>
+<body>
+  <header><h1>HouD2 DB Admin</h1><span class="sub">Local SQLite index administrator</span><div class="tabs"><button id="browseTab" class="active">Browse</button><button id="adminTab">Maintenance</button></div></header>
+  <main>
+    <aside><div id="tables"></div></aside>
+    <section class="content" id="browse">
+      <div class="toolbar"><input id="search" placeholder="Search current table"><select id="sort"></select><button id="direction" title="Sort direction">ASC</button><div class="spacer"></div><button id="csv">CSV</button><button id="json">JSON</button><span class="status" id="summary">Loading...</span></div>
+      <div class="table-wrap"><table><thead id="head"></thead><tbody id="body"></tbody></table></div>
+      <div class="pager"><button id="prev">Previous</button><span id="pageLabel">Page 1</span><button id="next">Next</button></div>
+    </section>
+    <section class="content" id="admin">
+      <div class="admin-grid">
+        <div class="admin-section"><h2>Consistent Backup</h2><p>SQLite Online BackupでWALを含む整合したコピーを作成します。</p><div class="actions"><button class="primary" data-action="backup">Create Backup</button></div></div>
+        <div class="admin-section"><h2>Integrity Check</h2><p>SQLiteのページ、Index、参照整合性を検査します。</p><div class="actions"><button data-action="integrity">Run Check</button></div></div>
+        <div class="admin-section"><h2>Rebuild Indexes</h2><p>Project/Task JSONを正本としてTaskとHIPの索引を修復します。</p><div class="actions"><button data-action="repair">Repair Indexes</button></div></div>
+        <div class="admin-section"><h2>Reset UI State</h2><p>Splitter位置や選択状態などのローカルUI状態を消去します。</p><div class="actions"><button class="danger" data-action="reset-ui">Reset UI State</button></div></div>
+        <div class="admin-section"><h2>Clear History</h2><p>選択した履歴Tableの全行をBackup後に削除します。</p><select id="history"><option>activity_history</option><option>open_history</option><option>settings_import_history</option></select><div class="actions" style="margin-top:8px"><button class="danger" data-action="clear-history">Clear Selected History</button></div></div>
+        <div class="admin-section"><h2>Operation Result</h2><pre id="result">Ready.</pre></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';history.replaceState(null,'',location.pathname);
+    const state={table:'',tables:[],page:1,pageSize:100,sort:'',desc:false,q:'',total:0};
+    const $=id=>document.getElementById(id);const headers=()=>({'X-HouD2-Admin-Token':token});
+    async function api(path,options={}){options.headers={...headers(),'Content-Type':'application/json',...(options.headers||{})};const r=await fetch(path,options);const d=await r.json();if(!r.ok)throw new Error(d.error||'Request failed');return d}
+    async function loadTables(){const d=await api('/api/tables');state.tables=d.items;$('tables').innerHTML=d.items.map(t=>`<button class="table-button ${t.name===state.table?'active':''}" data-table="${t.name}"><span>${t.name}</span><span class="count">${t.rows}</span></button>`).join('');document.querySelectorAll('[data-table]').forEach(b=>b.onclick=()=>selectTable(b.dataset.table));if(!state.table&&d.items.length)selectTable(d.items[0].name)}
+    async function selectTable(name){state.table=name;state.page=1;state.sort='';await loadTables();await loadRows()}
+    async function loadRows(){if(!state.table)return;const q=new URLSearchParams({q:state.q,sort:state.sort,desc:state.desc?'1':'0',page:String(state.page),page_size:String(state.pageSize)});const d=await api(`/api/table/${encodeURIComponent(state.table)}?${q}`);state.total=d.total;if(!state.sort)state.sort=d.columns[0];$('sort').innerHTML=d.columns.map(c=>`<option ${c===state.sort?'selected':''}>${c}</option>`).join('');$('head').innerHTML='<tr>'+d.columns.map(c=>`<th data-column="${c}">${c}</th>`).join('')+'</tr>';$('body').innerHTML=d.rows.map(row=>'<tr>'+d.columns.map(c=>{const v=row[c];return `<td class="${v===null?'null':''}" title="${escapeHtml(v===null?'NULL':String(v))}">${escapeHtml(v===null?'NULL':typeof v==='object'?JSON.stringify(v):String(v))}</td>`}).join('')+'</tr>').join('');$('summary').textContent=`${d.total} rows`;$('pageLabel').textContent=`Page ${state.page} / ${Math.max(1,Math.ceil(d.total/state.pageSize))}`;$('prev').disabled=state.page<=1;$('next').disabled=state.page*state.pageSize>=d.total;document.querySelectorAll('[data-column]').forEach(h=>h.onclick=()=>{state.sort=h.dataset.column;state.desc=!state.desc;loadRows()})}
+    function escapeHtml(v){return v.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    let timer;$('search').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{state.q=e.target.value;state.page=1;loadRows()},180)};$('sort').onchange=e=>{state.sort=e.target.value;loadRows()};$('direction').onclick=()=>{state.desc=!state.desc;$('direction').textContent=state.desc?'DESC':'ASC';loadRows()};$('prev').onclick=()=>{state.page--;loadRows()};$('next').onclick=()=>{state.page++;loadRows()};
+    async function download(format){const r=await fetch(`/api/export/${encodeURIComponent(state.table)}?format=${format}`,{headers:headers()});if(!r.ok)throw new Error('Export failed');const blob=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(r.headers.get('Content-Disposition')||'').match(/filename="([^"]+)"/)?.[1]||`${state.table}.${format}`;a.click();URL.revokeObjectURL(a.href)}$('csv').onclick=()=>download('csv');$('json').onclick=()=>download('json');
+    $('browseTab').onclick=()=>showTab(true);$('adminTab').onclick=()=>showTab(false);function showTab(browse){$('browse').style.display=browse?'flex':'none';$('admin').style.display=browse?'none':'block';$('browseTab').classList.toggle('active',browse);$('adminTab').classList.toggle('active',!browse)}
+    document.querySelectorAll('[data-action]').forEach(button=>button.onclick=async()=>{const action=button.dataset.action;if((action==='reset-ui'||action==='clear-history')&&!confirm('Backupを作成してこの操作を実行しますか？'))return;button.disabled=true;try{let body={};if(action==='clear-history')body={table:$('history').value};const d=await api('/api/'+action,{method:'POST',body:JSON.stringify(body)});$('result').textContent=JSON.stringify(d,null,2);await loadTables()}catch(e){$('result').textContent='ERROR: '+e.message}finally{button.disabled=false}});
+    loadTables().catch(e=>{$('summary').textContent='ERROR: '+e.message});
+  </script>
+</body>
+</html>

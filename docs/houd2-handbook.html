@@ -1,0 +1,1407 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>HouD2Launcher Handbook</title>
+  <style>
+    :root {
+      --bg: #171a19;
+      --surface: #202422;
+      --surface-2: #292e2b;
+      --line: #414944;
+      --line-soft: #323834;
+      --text: #edf1ef;
+      --muted: #aeb8b2;
+      --green: #79cf8f;
+      --green-dark: #264d32;
+      --red: #ee7b72;
+      --red-dark: #522b2a;
+      --amber: #f0b66e;
+      --blue: #8cbce6;
+      --code: #121514;
+      --focus: #8fdaa2;
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 154px; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.75;
+      letter-spacing: 0;
+    }
+    button, input { font: inherit; letter-spacing: 0; }
+    a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: #b9daf5; }
+    code, pre { font-family: Consolas, "Cascadia Mono", monospace; }
+    code {
+      background: #111412;
+      border: 1px solid #343a36;
+      border-radius: 3px;
+      color: #d8ede0;
+      padding: 1px 5px;
+      overflow-wrap: anywhere;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #1b1f1d;
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar-inner {
+      width: min(100%, var(--max));
+      margin: 0 auto;
+      padding: 14px 22px 0;
+    }
+    .brand-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(280px, 520px);
+      align-items: center;
+      gap: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid #66836f;
+      background: #263c2c;
+      color: #9ce4ae;
+      font-size: 17px;
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+    .brand h1 { margin: 0; font-size: 18px; line-height: 1.25; }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .search-wrap { position: relative; }
+    .search-wrap::before {
+      content: "⌕";
+      position: absolute;
+      left: 12px;
+      top: 7px;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1;
+    }
+    #global-search {
+      width: 100%;
+      height: 40px;
+      padding: 7px 72px 7px 38px;
+      color: var(--text);
+      background: #282d2a;
+      border: 1px solid #4b554f;
+      border-radius: 4px;
+      outline: none;
+    }
+    #global-search:focus { border-color: var(--focus); box-shadow: 0 0 0 2px #31533a; }
+    .search-key { position: absolute; right: 10px; top: 8px; color: #87918b; font-size: 12px; }
+    .search-results {
+      position: absolute;
+      top: 45px;
+      left: 0;
+      right: 0;
+      max-height: 420px;
+      overflow: auto;
+      background: #242926;
+      border: 1px solid #59625d;
+      box-shadow: 0 12px 28px #000a;
+      display: none;
+    }
+    .search-results.open { display: block; }
+    .result-summary { padding: 8px 12px; color: var(--muted); border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+    .search-result {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid var(--line-soft);
+      background: transparent;
+      color: var(--text);
+      padding: 10px 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .search-result:hover, .search-result:focus { background: #354039; outline: none; }
+    .search-result strong { display: block; }
+    .search-result span { color: var(--muted); font-size: 12px; }
+    .tabs { display: flex; gap: 2px; margin-top: 12px; overflow-x: auto; }
+    .role-tab {
+      min-width: 158px;
+      padding: 9px 14px;
+      border: 1px solid transparent;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #b7c0bb;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .role-tab:hover { background: #272c29; color: #fff; }
+    .role-tab.active { color: #fff; background: #2d3430; border-color: #48514c; border-bottom-color: var(--green); }
+    .page-shell {
+      width: min(100%, var(--max));
+      margin: 0 auto;
+      padding: 24px 22px 70px;
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 34px;
+    }
+    .side-nav {
+      position: sticky;
+      top: 150px;
+      align-self: start;
+      max-height: calc(100vh - 175px);
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      padding-right: 18px;
+    }
+    .side-title { margin: 0 0 8px; color: #8d9992; font-size: 11px; text-transform: uppercase; }
+    .side-nav a {
+      display: block;
+      padding: 7px 8px;
+      color: #bdc7c1;
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      font-size: 13px;
+    }
+    .side-nav a:hover { background: #232825; color: #fff; }
+    .side-nav a.current { color: #a5e7b5; border-left-color: var(--green); background: #243029; }
+    main { min-width: 0; }
+    .role-panel { display: none; }
+    .role-panel.active { display: block; }
+    .role-intro {
+      border-bottom: 1px solid var(--line);
+      padding: 0 0 22px;
+      margin-bottom: 26px;
+    }
+    .eyebrow { color: var(--green); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .role-intro h2 { margin: 5px 0 7px; font-size: 28px; line-height: 1.3; }
+    .role-intro p { margin: 0; max-width: 760px; color: #c0c9c4; }
+    .doc-section { border-bottom: 1px solid var(--line-soft); padding: 8px 0 34px; margin-bottom: 28px; }
+    .doc-section h2 { font-size: 22px; margin: 0 0 14px; line-height: 1.4; }
+    .doc-section h3 { font-size: 16px; margin: 25px 0 8px; color: #f6f8f7; }
+    .doc-section p { max-width: 850px; }
+    .lead { color: #cbd3ce; font-size: 16px; }
+    .grid-2, .grid-3 { display: grid; gap: 12px; margin: 16px 0; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .info-block {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 15px;
+      min-width: 0;
+    }
+    .info-block h3, .info-block h4 { margin: 0 0 7px; font-size: 15px; }
+    .info-block p { margin: 0; color: #bdc6c1; font-size: 13px; }
+    .info-block strong.big { display: block; color: #fff; font-size: 20px; margin-bottom: 3px; }
+    .callout {
+      margin: 16px 0;
+      border-left: 4px solid var(--blue);
+      background: #202a30;
+      padding: 12px 15px;
+    }
+    .callout.warning { border-color: var(--amber); background: #302a21; }
+    .callout.danger { border-color: var(--red); background: #322323; }
+    .callout.success { border-color: var(--green); background: #203026; }
+    .callout strong { display: block; margin-bottom: 3px; }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+    .status::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+    .used { color: var(--green); }
+    .unused { color: var(--red); }
+    .step-list { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+    .step-list li { position: relative; padding: 0 0 20px 48px; min-height: 40px; }
+    .step-list li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: grid;
+      place-items: center;
+      width: 31px;
+      height: 31px;
+      border: 1px solid #5d6b63;
+      background: #29312c;
+      color: #bde8c7;
+      font-weight: 800;
+    }
+    .step-list li::after { content: ""; position: absolute; left: 15px; top: 34px; bottom: 3px; width: 1px; background: #46504a; }
+    .step-list li:last-child::after { display: none; }
+    .step-list strong { display: block; }
+    .step-list span { color: var(--muted); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); margin: 14px 0; }
+    table { width: 100%; border-collapse: collapse; min-width: 620px; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
+    th { background: #2d332f; color: #f3f6f4; font-size: 12px; }
+    td { background: #202422; color: #c8d0cc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    .path-tree, pre {
+      position: relative;
+      background: var(--code);
+      border: 1px solid #39403c;
+      border-radius: 5px;
+      padding: 16px;
+      color: #cbe5d3;
+      overflow: auto;
+      line-height: 1.6;
+      font-size: 13px;
+      white-space: pre;
+    }
+    .copy-button {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      border: 1px solid #4b554f;
+      background: #2c332f;
+      color: #dce3df;
+      min-width: 34px;
+      height: 29px;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    .copy-button:hover { background: #3a443e; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(105px, 1fr));
+      align-items: stretch;
+      gap: 18px;
+      margin: 18px 0;
+    }
+    .flow-item {
+      position: relative;
+      border: 1px solid #4a554f;
+      background: #222824;
+      padding: 13px 10px;
+      text-align: center;
+      min-height: 78px;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+    }
+    .flow-item:not(:last-child)::after { content: "→"; position: absolute; right: -17px; top: 26px; color: #77827c; }
+    .figure { margin: 18px 0; border: 1px solid var(--line); background: #202422; padding: 10px; }
+    .figure img { display: block; width: 100%; max-width: 760px; height: auto; border: 1px solid #4a514d; }
+    .figure figcaption { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    details { border-top: 1px solid var(--line-soft); padding: 10px 0; }
+    details:last-child { border-bottom: 1px solid var(--line-soft); }
+    summary { cursor: pointer; color: #f2f5f3; font-weight: 650; }
+    details p { color: #bdc6c1; margin: 8px 0 3px; }
+    .file-reference {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 5px;
+      margin: 10px 0;
+      padding: 0;
+    }
+    .file-reference:last-child { border-bottom: 1px solid var(--line); }
+    .file-reference summary {
+      padding: 12px 14px;
+      background: #282e2a;
+      overflow-wrap: anywhere;
+    }
+    .file-reference[open] summary { border-bottom: 1px solid var(--line); }
+    .file-reference-body { padding: 4px 14px 12px; }
+    .function-list { margin: 8px 0 0; padding: 0; list-style: none; }
+    .function-list li { padding: 8px 0; border-top: 1px solid var(--line-soft); }
+    .function-list li:first-child { border-top: 0; }
+    .function-list code { display: inline; }
+    .function-list span { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
+    .file-purpose { color: #cbd3ce; margin: 9px 0; }
+    .tag { display: inline-block; border: 1px solid #4a554f; color: #b9c4be; padding: 1px 7px; margin: 2px; font-size: 11px; border-radius: 3px; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { padding: 5px 0 5px 27px; position: relative; }
+    .checklist li::before { content: "✓"; position: absolute; left: 2px; color: var(--green); font-weight: 800; }
+    .muted { color: var(--muted); }
+    .footer { color: #8f9993; font-size: 12px; margin-top: 35px; }
+    .print-note { display: none; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    @media (max-width: 860px) {
+      html { scroll-padding-top: 190px; }
+      .brand-row { grid-template-columns: 1fr; gap: 10px; }
+      .topbar-inner { padding-inline: 14px; }
+      .tabs { margin-top: 10px; }
+      .role-tab { min-width: 140px; }
+      .page-shell { display: block; padding: 18px 15px 60px; }
+      .side-nav { position: static; max-height: none; border: 1px solid var(--line); padding: 8px; margin-bottom: 20px; display: flex; overflow-x: auto; }
+      .side-title { display: none; }
+      .side-nav a { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; }
+      .side-nav a.current { border-bottom-color: var(--green); }
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; gap: 10px; }
+      .flow-item { min-height: 55px; }
+      .flow-item:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -19px; }
+      .role-intro h2 { font-size: 24px; }
+    }
+    @media print {
+      body { background: #fff; color: #111; font-size: 11pt; }
+      .topbar, .side-nav, .copy-button { display: none !important; }
+      .page-shell { display: block; width: 100%; padding: 0; }
+      .role-panel { display: block !important; page-break-before: always; }
+      .role-panel:first-child { page-break-before: auto; }
+      .doc-section, .role-intro { border-color: #bbb; }
+      .info-block, td, th, .callout, pre, .path-tree, .flow-item { background: #fff !important; color: #111 !important; border-color: #999; }
+      a { color: #111; }
+      .print-note { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <div class="brand">
+          <div class="brand-mark">H2</div>
+          <div>
+            <h1>HouD2Launcher Handbook</h1>
+            <p>v0.2.0 · Local-first Houdini Project Launcher</p>
+          </div>
+        </div>
+        <div class="search-wrap">
+          <input id="global-search" type="search" placeholder="機能、エラー、環境変数、パスを検索" autocomplete="off" aria-label="ドキュメント全体を検索">
+          <span class="search-key">Ctrl K</span>
+          <div id="search-results" class="search-results" role="listbox" aria-label="検索結果"></div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="対象ユーザー">
+        <button class="role-tab active" data-role-target="user">一般ユーザー</button>
+        <button class="role-tab" data-role-target="supervisor">Supervisor / 管理者</button>
+        <button class="role-tab" data-role-target="developer">Developer</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <aside class="side-nav" id="side-nav" aria-label="このタブの目次"></aside>
+    <main id="main-content">
+      <p class="print-note">HouD2Launcher Handbook v0.2.0 · 2026-08-02</p>
+
+      <article class="role-panel active" data-role="user" data-role-label="一般ユーザー">
+        <header class="role-intro">
+          <span class="eyebrow">Artist Guide</span>
+          <h2>一般ユーザー向け</h2>
+          <p>Projectを選び、TaskでHIPを作り、正しいHoudiniとキャッシュを使って作業するための手順です。日常操作はこのタブだけで完結します。</p>
+        </header>
+
+        <section class="doc-section" id="user-start" data-title="最初にやること" data-keywords="初回 起動 インストール auto detect launcher settings">
+          <h2>最初にやること</h2>
+          <p class="lead">Launcherを起動したら、Houdini Installation、Project、Task、HIPの順に選択します。</p>
+          <ol class="step-list">
+            <li><strong>Launcherを起動</strong><span><code>start_houd2launcher.bat</code>をダブルクリックします。</span></li>
+            <li><strong>Houdiniを登録</strong><span><b>Launcher Settings → Houdini Installations → Auto Detect</b>を実行します。通常は初回だけです。</span></li>
+            <li><strong>Projectを選択</strong><span>左のProjectsから作業Projectを選びます。既存Projectは<b>Add Existing Project</b>で登録できます。</span></li>
+            <li><strong>Taskを選択</strong><span>中央のTask一覧から作業対象を選択します。</span></li>
+            <li><strong>HIPを開く</strong><span>右のHIPタブでVersionを選択し、OpenまたはOpen Read Onlyを実行します。</span></li>
+          </ol>
+          <div class="grid-3">
+            <div class="info-block"><strong class="big">Projects</strong><p>作品・案件のルート。Project設定とTask一覧を所有します。</p></div>
+            <div class="info-block"><strong class="big">Tasks</strong><p>Shot、Asset、Effectなどの作業単位。HIPとCacheをまとめます。</p></div>
+            <div class="info-block"><strong class="big">HIP</strong><p>Launcher管理のHoudini Scene Versionです。</p></div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="user-layout" data-title="画面の見方" data-keywords="projects tasks overview hip caches settings history layout UI">
+          <h2>画面の見方</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>場所</th><th>役割</th><th>主な右クリック操作</th></tr></thead>
+            <tbody>
+              <tr><td>左: Projects</td><td>Projectの切替と登録状態の管理</td><td>New Task、Project Settings、Import Task Package、Open in Explorer</td></tr>
+              <tr><td>中央: Tasks</td><td>Task検索、並べ替え、サムネイル表示</td><td>New HIP、Version関連、Task Package、Archive、完全削除</td></tr>
+              <tr><td>右: Task Details</td><td>Overview、HIP、Caches、Settings、History</td><td>HIPを開く、Version Up、Cache確認・削除</td></tr>
+            </tbody>
+          </table></div>
+          <div class="callout"><strong>操作は各一覧の右クリックが基本</strong>TaskやProjectを選択して右クリックすると、その対象に使える操作だけが表示されます。フォルダを見たい場合は<b>Open in Explorer</b>です。</div>
+        </section>
+
+        <section class="doc-section" id="user-hip" data-title="HIPを作成・開く・Version Up" data-keywords="new hip open readonly version up hiplc hipnc license backup">
+          <h2>HIPを作成・開く・Version Up</h2>
+          <h3>New HIP</h3>
+          <p>Taskを選択し、Task右クリックまたはHIPタブから<b>New HIP</b>を実行します。選択したHoudiniの<code>hython.exe</code>が正しいライセンス形式の空HIPを作ります。</p>
+          <div class="grid-3">
+            <div class="info-block"><h3><code>.hip</code></h3><p>Commercialライセンス。</p></div>
+            <div class="info-block"><h3><code>.hiplc</code></h3><p>Indie / Limited Commercial。</p></div>
+            <div class="info-block"><h3><code>.hipnc</code></h3><p>Non-Commercial。</p></div>
+          </div>
+          <h3>Open</h3>
+          <p>HIPごとの推奨Houdini、Task推奨、Project既定、Launcher既定の順に候補が決まります。Windowsのファイル関連付けは使わず、選択した<code>houdini.exe</code>を直接起動します。</p>
+          <h3>Open Read Only</h3>
+          <p>元HIPを変更しない一時コピーを開きます。内容確認や過去Versionの参照に使います。</p>
+          <h3>Version Up</h3>
+          <p>選択HIPを次の空きVersionへコピーし、新しいHIPメタデータを作ります。既存Versionは上書きしません。</p>
+          <div class="callout warning"><strong>ExplorerでHIP名を勝手に変更しない</strong>Launcherの命名規則とメタデータが一致しなくなります。Task名の変更やVersion UpはLauncherから行ってください。</div>
+        </section>
+
+        <section class="doc-section" id="user-paths" data-title="作業フォルダとパス" data-keywords="path folder project root task root houdini geo abc export metadata thumbnail">
+          <h2>作業フォルダとパス</h2>
+          <p>標準構成では、Task直下にLauncher管理情報の<code>.houd2</code>とHoudini作業用の<code>houdini</code>があります。</p>
+          <div class="path-tree" data-copy>{project_root}/
+├─ .houd2/
+│  └─ project.json                 Projectの正本設定
+└─ {task_name}/
+   ├─ .houd2/
+   │  ├─ task.json                 Taskの正本設定
+   │  ├─ hips/*.json               HIPごとのメタデータ
+   │  ├─ thumbnail.png             Taskサムネイル
+   │  └─ thumbnails/               HIP Version画像
+   └─ houdini/                     Houdiniでは通常ここが $HIP / $JOB
+      ├─ {task}_v001_{user}.hiplc
+      ├─ geo/{cache_name}/v1/      geo_cache Role
+      ├─ abc/                       alembic Role
+      └─ export/                    export Role</div>
+          <div class="callout success"><strong>物理フォルダ名よりRoleを使う</strong>Projectごとに<code>geo</code>の名前を変えても、Launcherは<code>geo_cache</code> Roleから正しい場所を解決します。</div>
+        </section>
+
+        <section class="doc-section" id="user-cache" data-title="Cacheの確認と削除" data-keywords="cache used unused green red bgeo vdb abc sim usd file cache loadfromdisk delete size search">
+          <h2>Cacheの確認と削除</h2>
+          <p>HIPを選択して<b>Caches</b>タブを開くと、Projectの<code>geo_cache</code> Role配下に存在する既知形式をすべて走査します。Cache名が親、その下にVersionが表示されます。</p>
+          <div class="grid-2">
+            <div class="info-block"><span class="status used">USED / 緑</span><p>選択HIP内で実際にLoad中のノードが、そのVersionの実効出力パスを参照しています。</p></div>
+            <div class="info-block"><span class="status unused">UNUSED / 赤</span><p>ディスクには存在しますが、選択HIP内では現在読まれていないVersionです。</p></div>
+          </div>
+          <p>標準File Cacheは<code>loadfromdisk</code>が有効でBypassされていない場合だけUsed判定に使います。HouD2 Cache Inは、選択中のCacheとVersionから解決した実ファイルパターンを直接Used判定へ渡します。フレーム範囲の一致は条件ではありません。検索、Used/Unusedフィルター、容量順ソートができます。</p>
+          <div class="path-tree" data-copy>geo/{cache_name}/{version}/{cache_name}_{version}.{frame}.bgeo.sc
+
+例:
+D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
+          <figure class="figure">
+            <img src="assets/cache-folder-example.png" alt="Windows Explorerで表示したsphere v1のBGEOキャッシュ連番" loading="lazy">
+            <figcaption>Cache名の下にVersionフォルダ、その中にフレーム連番を置く標準例。</figcaption>
+          </figure>
+          <div class="callout danger"><strong>Cache削除は完全削除</strong>Version行はそのVersionだけ、親Cache行は全Versionを削除します。Trashには移動しません。緑のUsed Versionを含む場合は強い警告が出ます。</div>
+        </section>
+
+        <section class="doc-section" id="user-cache-hda" data-title="Cache Out / Cache In HDA" data-keywords="hda cache out cache in latest specific project task creator manifest marker catalog">
+          <h2>Cache Out / Cache In HDA</h2>
+          <h3>Cache Outで保存</h3>
+          <p>パラメータ画面は標準File Cacheに近い構成です。<b>Caching</b>、<b>Save Filters</b>、<b>Metadata</b>、<b>Advanced</b>に分かれ、内部のFile Cache SOPへ保存範囲、Simulation、属性・Group削除などを接続しています。</p>
+          <ol class="step-list">
+            <li><strong>Geometryを接続</strong><span><code>HouD2 Cache Out</code>を作り、保存したいSOPをInputへ接続します。</span></li>
+            <li><strong>Cache Nameを確認</strong><span>既定値は<code>$OS</code>で、ノード名がCache名になります。固定名にしたい場合は例として<code>explosion_main</code>へ変更します。</span></li>
+            <li><strong>保存</strong><span><b>Save to Disk</b>は範囲、<b>Save Current Frame</b>は現在フレームだけを書き出します。</span></li>
+          </ol>
+          <div class="path-tree" data-copy>geo/explosion_main/v003/
+├─ geo/explosion_main.$F4.bgeo.sc
+├─ cache_manifest.json
+└─ cache_marker.bgeo.sc</div>
+          <p>実キャッシュの保存後、1ポイントのMarker GeometryをHDA出力にします。MarkerのDetail AttributeにはCache ID、Project/Task ID、相対File Pattern、Version、生成者、Frame、容量などが入り、パスワードや他PCの絶対パスは入りません。</p>
+          <h3>Cache Inで読む</h3>
+          <p><code>HouD2 Cache In</code>はInput不要です。Project、Task、Cacheを順に選びます。Versionは<b>Latest</b>が既定で、<b>Specific</b>に切り替えると存在するVersionを選択できます。</p>
+          <p>Cache Informationには生成者、User ID、Machine ID、作成日時、フレーム範囲、FPS、容量、Source Project / Task、実効Pathが表示されます。別TaskのCacheは元TaskのローカルGeo Rootから直接読みます。</p>
+          <div class="callout"><strong>Launcherを起動したまま使う</strong>別Project/TaskのメニューはLauncherのlocalhost Catalogから取得します。Current TaskはAPI停止時もローカルManifestからFallbackできます。</div>
+          <div class="callout warning"><strong>Sync to Localは将来機能</strong>現在はローカルに存在するCacheだけを読みます。HDAのCook中に他PCへ接続したり、ネットワーク同期を開始したりはしません。</div>
+        </section>
+
+        <section class="doc-section" id="user-package" data-title="Taskを別ユーザーへ渡す" data-keywords="task package export import handoff manifest checksum sha256 copy transfer cache excluded">
+          <h2>Taskを別ユーザーへ渡す</h2>
+          <h3>Export</h3>
+          <ol class="step-list">
+            <li><strong>Taskを右クリック</strong><span><b>Export Task Package...</b>を選択します。</span></li>
+            <li><strong>保存先を選択</strong><span><code>{task_name}_houd2package</code>フォルダが作られます。</span></li>
+            <li><strong>フォルダごと渡す</strong><span>途中のファイルを抜かず、Packageフォルダ全体を渡します。</span></li>
+          </ol>
+          <h3>Import</h3>
+          <ol class="step-list">
+            <li><strong>移行先Projectを右クリック</strong><span><b>Import Task Package...</b>を選択します。</span></li>
+            <li><strong>Packageフォルダを選択</strong><span>全ファイルのSHA-256と危険なパスを検証します。</span></li>
+            <li><strong>Previewを確認</strong><span>容量、除外Cache、Project設定差分、Import後のTask名を確認してImportします。</span></li>
+          </ol>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Packageに入る</th><th>Packageから除外</th></tr></thead>
+            <tbody><tr><td>HIP、Task設定、HIPメタデータ、サムネイル、Houdini配下の非Cacheファイル、Manifest、Project Context</td><td><code>geo_cache</code>、<code>vdb_cache</code>、<code>sim</code>、<code>alembic</code>などのCache Role、旧Cache Trash</td></tr></tbody>
+          </table></div>
+          <p>同名Taskがある場合は<code>_copy</code>、<code>_copy2</code>のように別名化され、新しいTask IDと管理HIP名へ更新されます。元の<code>$HIP</code>相対参照はHIP内部を変更しないため維持されます。</p>
+        </section>
+
+        <section class="doc-section" id="user-lifecycle" data-title="Archiveと完全削除" data-keywords="archive delete permanently task remove danger restore">
+          <h2>Archiveと完全削除</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>操作</th><th>起きること</th><th>戻せるか</th></tr></thead>
+            <tbody>
+              <tr><td>Archive Task</td><td><code>task.json</code>のStatusを<code>archived</code>へ変更。ファイルは残る。</td><td>設定をActiveへ戻せる</td></tr>
+              <tr><td>Delete Task Permanently...</td><td>Taskフォルダ内のHIP、Cache、設定、サムネイルをすべて完全削除。</td><td><b class="unused">戻せない</b></td></tr>
+            </tbody>
+          </table></div>
+          <div class="callout danger"><strong>完全削除はTask名の入力確認が必要</strong>重要なTaskは先にTask Packageや別バックアップを作ってください。</div>
+        </section>
+
+        <section class="doc-section" id="user-trouble" data-title="よくある問題" data-keywords="troubleshooting error missing external unused unique constraint cannot add project frame range v2 write">
+          <h2>よくある問題</h2>
+          <details><summary>UsedのはずのCacheがUnusedになる</summary><p>まず選択中のHIPを確認し、Refreshを実行します。File Cacheの<code>loadfromdisk</code>、Bypass、実効Versionを確認してください。HIPがv2を指し、ディスクにv1だけある場合、v1は正しくUnusedです。</p></details>
+          <details><summary>File Cacheのv2が書き出せない</summary><p>Versionフォルダの制限より、書出しフレーム範囲を確認します。例としてStartが<code>$FSTART = 1001</code>、Endが固定<code>5</code>では範囲が逆です。Endを<code>$FEND</code>など有効な値にします。</p></details>
+          <details><summary>UNIQUE constraint failed: projects.root</summary><p>同じProject Rootの古いローカルDB登録です。現在の版は同じRootと<code>project.json</code>だと確認できた場合に自動修復します。Launcherを再起動してAdd Existingをやり直します。</p></details>
+          <details><summary>HIPを作れない</summary><p>Launcher SettingsでHoudiniと<code>hython.exe</code>がValidか確認します。ライセンスにより拡張子が<code>.hiplc</code>や<code>.hipnc</code>になるのは正常です。</p></details>
+          <details><summary>HoudiniのFrame RangeがTask設定と違う</summary><p>Project SettingsのApply Task Frame Rangeが有効か確認します。Launcherは起動後にGlobal Range、Playback Range、FPS、Current Frameを適用します。</p></details>
+        </section>
+      </article>
+
+      <article class="role-panel" data-role="supervisor" data-role-label="Supervisor / 管理者">
+        <header class="role-intro">
+          <span class="eyebrow">Project Operations</span>
+          <h2>Supervisor / Project管理者向け</h2>
+          <p>Project構造、命名、Houdini Version、環境変数、Task受け渡しルールを定義し、ユーザー間で一貫性を維持するためのガイドです。</p>
+        </header>
+
+        <section class="doc-section" id="sup-responsibility" data-title="管理者の責任範囲" data-keywords="supervisor responsibility policy onboarding governance">
+          <h2>管理者の責任範囲</h2>
+          <ul class="checklist">
+            <li>Project RootとProject名を決め、<code>project.json</code>を作成・保護する</li>
+            <li>Folder Roleと相対パスを定義する</li>
+            <li>HIP命名規則と既定ライセンス拡張子を決める</li>
+            <li>Frame Range、FPS、Simulation StartをTaskへ設定する</li>
+            <li>利用可能なHoudini VersionとFallback Policyを決める</li>
+            <li>共有してよい環境変数とSearch Pathを定義する</li>
+            <li>Task Packageの受け渡し、Cache再取得、完全削除の運用を決める</li>
+          </ul>
+        </section>
+
+        <section class="doc-section" id="sup-project" data-title="Projectを設計する" data-keywords="new project add existing root settings project json default frames">
+          <h2>Projectを設計する</h2>
+          <p>Projectの正本は<code>{project_root}/.houd2/project.json</code>です。各ユーザーのSQLiteは索引であり、Project JSONが常に優先されます。</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>設定グループ</th><th>決める内容</th><th>推奨</th></tr></thead>
+            <tbody>
+              <tr><td>Identity</td><td>Project名、説明、Root</td><td>Rootは途中で移動しない。コピー時はProject IDの扱いを確認。</td></tr>
+              <tr><td>Default Frames</td><td>Start、End、FPS、Sim Start</td><td>Task作成時の初期値としてShot規約に合わせる。</td></tr>
+              <tr><td>Folders</td><td>Key、Display Name、Role、Relative Path</td><td>物理名より意味のあるRoleを安定させる。</td></tr>
+              <tr><td>Naming</td><td>HIP Template、Padding、Extension</td><td><code>{task}_v{version:03d}_{user}.{extension}</code></td></tr>
+              <tr><td>Houdini Policy</td><td>Default Installation、Fallback、FPS/Range適用</td><td>Projectの互換要件に合わせる。</td></tr>
+            </tbody>
+          </table></div>
+          <div class="callout warning"><strong>Project Rootは秘密情報ではないがローカル固有</strong>Task PackageのProject Contextには絶対Rootを含めず、移行先Project設定も自動上書きしません。</div>
+        </section>
+
+        <section class="doc-section" id="sup-folders" data-title="Folder Roleと標準階層" data-keywords="folder definition role geo_cache alembic export auto create enabled relative path">
+          <h2>Folder Roleと標準階層</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Role</th><th>標準相対パス</th><th>用途</th><th>Task Package</th></tr></thead>
+            <tbody>
+              <tr><td><code>geo_cache</code></td><td><code>geo</code></td><td>BGEOなどのGeometry Cache。Cache一覧の管理Root。</td><td>除外</td></tr>
+              <tr><td><code>alembic</code></td><td><code>abc</code></td><td>Alembic Cache。</td><td>除外</td></tr>
+              <tr><td><code>export</code></td><td><code>export</code></td><td>Cache以外の成果物。</td><td>含む</td></tr>
+            </tbody>
+          </table></div>
+          <p>RoleはProject内で一意、Relative Pathも一意である必要があります。絶対パス、<code>..</code>、空セグメントは禁止です。<b>Auto Create</b>はTask作成時に自動生成するか、<b>Enabled</b>はRoleを有効にするかを決めます。</p>
+          <h3>Cache命名の推奨</h3>
+          <div class="path-tree" data-copy>{role:geo_cache}/{cache_name}/v{version}/{cache_name}_v{version}.{frame:04d}.bgeo.sc
+
+geo/smoke/v1/smoke_v1.1001.bgeo.sc
+geo/smoke/v2/smoke_v2.1001.bgeo.sc</div>
+        </section>
+
+        <section class="doc-section" id="sup-environment" data-title="環境変数とExpression" data-keywords="environment expression token priority JOB HOUD2 SHOT TASK SIM role search path">
+          <h2>環境変数とExpression</h2>
+          <p>環境変数は次の順で重ねられ、後の値が優先されます。Protected変数はユーザー設定で上書きできません。</p>
+          <div class="flow">
+            <div class="flow-item">Windows環境</div><div class="flow-item">Launcher設定</div><div class="flow-item">Project設定</div><div class="flow-item">Task設定</div><div class="flow-item">Protected HOUD2 / Frame</div>
+          </div>
+          <h3>日常Expression向け変数</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>変数</th><th>内容</th><th>例</th></tr></thead>
+            <tbody>
+              <tr><td><code>$TASK_NAME</code></td><td>現在のTask名</td><td><code>fire</code></td></tr>
+              <tr><td><code>$SHOT_FRAME_START</code></td><td>Task Start</td><td><code>1001</code></td></tr>
+              <tr><td><code>$SHOT_FRAME_END</code></td><td>Task End</td><td><code>1100</code></td></tr>
+              <tr><td><code>$SHOT_FPS</code></td><td>Task FPS</td><td><code>24</code></td></tr>
+              <tr><td><code>$SIM_FRAME_START</code></td><td>Simulation Start</td><td><code>1001</code></td></tr>
+              <tr><td><code>$JOB</code></td><td>TaskのHoudini Root</td><td><code>D:/show/fire/houdini</code></td></tr>
+            </tbody>
+          </table></div>
+          <h3>内部・監査向け変数</h3>
+          <p><code>HOUD2_PROJECT_ID</code>、<code>HOUD2_PROJECT_ROOT</code>、<code>HOUD2_TASK_ID</code>、<code>HOUD2_TASK_ROOT</code>、<code>HOUD2_HOUDINI_ROOT</code>、<code>HOUD2_HIP_PATH</code>、<code>HOUD2_USER</code>、<code>HOUD2_HOUDINI_VERSION</code>、<code>HOUD2_HOUDINI_BUILD</code>が起動時に供給されます。OverviewのExpression Environmentで実値を確認できます。</p>
+          <h3>設定内テンプレート</h3>
+          <p><code>{project}</code>、<code>{project_root}</code>、<code>{task}</code>、<code>{task_root}</code>、<code>{houdini_root}</code>、<code>{user}</code>、<code>{role:geo_cache}</code>を使用できます。循環参照やUnknown TokenはHoudini起動前にエラーになります。</p>
+        </section>
+
+        <section class="doc-section" id="sup-houdini" data-title="Houdini Version Policy" data-keywords="houdini installation fallback exact compatible default selection license fps range">
+          <h2>Houdini Version Policy</h2>
+          <p>ユーザーPCごとにLauncher SettingsでInstallationをAuto Detectします。Installation IDはPC固有なのでTask Packageでは移行しません。</p>
+          <div class="flow">
+            <div class="flow-item">HIP推奨</div><div class="flow-item">Task推奨</div><div class="flow-item">Project既定</div><div class="flow-item">Launcher既定</div><div class="flow-item">最新Valid</div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Fallback Policy</th><th>運用</th></tr></thead>
+            <tbody>
+              <tr><td><code>require_exact</code></td><td>厳密な再現性が必要。指定Buildがなければ止める。</td></tr>
+              <tr><td><code>same_major_minor</code></td><td>同じMajor.Minor内のBuild差を許容。</td></tr>
+              <tr><td><code>newer_compatible</code></td><td>より新しい互換候補を許容。</td></tr>
+              <tr><td><code>always_ask</code></td><td>ユーザーに毎回確認。制作初期や混在環境向け。</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+
+        <section class="doc-section" id="sup-handoff" data-title="設定配布とTask受け渡し" data-keywords="settings import export task package project context checksum handoff supervisor">
+          <h2>設定配布とTask受け渡し</h2>
+          <div class="grid-2">
+            <div class="info-block"><h3>Settings Export / Import</h3><p>ProjectまたはTaskの設定項目をJSONで移す機能。Preview、差分、Backupがあります。制作規約の配布向けです。</p></div>
+            <div class="info-block"><h3>Task Package</h3><p>HIPやメタデータを含むTask本体の受け渡し。Cacheは除外し、ManifestとSHA-256で完全性を検証します。</p></div>
+          </div>
+          <p>Task Package ImportはTarget Project設定を上書きせず、差分をPreview表示します。別名ImportではTask IDと管理HIP名を更新します。</p>
+        </section>
+
+        <section class="doc-section" id="sup-cache-audit" data-title="Cache監査と容量管理" data-keywords="cache audit size sort used unused delete policy supervisor">
+          <h2>Cache監査と容量管理</h2>
+          <ul class="checklist">
+            <li>対象HIPを固定してからCacheタブをRefreshする</li>
+            <li>Used firstで現在の依存Versionを確認する</li>
+            <li>Size: Heavy firstで大容量Cacheを確認する</li>
+            <li>Unusedが本当に不要か、別HIP Versionでも確認する</li>
+            <li>親Cache削除は全Version、子行削除は対象Versionだけと理解する</li>
+          </ul>
+          <div class="callout danger"><strong>Unusedは「全HIPで未使用」ではない</strong>選択HIPで現在読まれていないという意味です。削除前に必要なHIP Versionを切り替えて確認してください。</div>
+        </section>
+
+        <section class="doc-section" id="sup-cache-hda" data-title="Cache HDAとCatalogの運用" data-keywords="cache out cache in hda catalog manifest marker project task latest specific supervisor">
+          <h2>Cache HDAとCatalogの運用</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>要素</th><th>正本・解決元</th><th>運用上の確認点</th></tr></thead>
+            <tbody>
+              <tr><td>Cache Out</td><td><code>HOUD2_GEO_ROOT</code>とFolder Role</td><td>Cache Nameは既定で<code>$OS</code>。命名規則に合わせてノード名を付ける。</td></tr>
+              <tr><td>Manifest</td><td><code>cache_manifest.json</code></td><td>Cache ID、相対Pattern、Version、生成者、容量、Statusが揃っていること。</td></tr>
+              <tr><td>Marker</td><td><code>cache_marker.bgeo.sc</code></td><td>共有・同期用の軽量メタデータ。認証情報や他PCの絶対パスを含めない。</td></tr>
+              <tr><td>Cache In</td><td>localhost Catalog、次にローカルManifest</td><td>Project、Task、Cache、Latest/Specificの選択とCreator表示を確認する。</td></tr>
+              <tr><td>Launcher Caches</td><td>選択HIPのHython ProbeとRole全走査</td><td>HouD2 Cache Inの実効PatternがUsed Versionとして緑になること。</td></tr>
+            </tbody>
+          </table></div>
+          <p>Catalog APIはLauncher実行中だけ有効な<code>127.0.0.1</code>サービスです。URLと一時TokenはHoudini起動時の環境へ渡され、HDAがSQLiteを直接読むことはありません。別Project/TaskのプルダウンはCatalogを利用し、Current TaskはローカルManifestへFallbackします。</p>
+          <div class="callout warning"><strong>HDA更新後の確認</strong><code>houd2_cache.hdalc</code>を再ビルドしたら、既に開いているHoudiniではDefinitionをReloadするかHoudiniを再起動します。変更済みの既存Parameter値は保持され、既定値は新規ノードへ適用されます。</div>
+        </section>
+
+        <section class="doc-section" id="sup-operation" data-title="推奨運用チェックリスト" data-keywords="onboarding backup archive delete checklist operations">
+          <h2>推奨運用チェックリスト</h2>
+          <h3>Project開始時</h3>
+          <ul class="checklist"><li>Folder Roleと命名テンプレートを承認</li><li>Houdini PolicyとFPSを承認</li><li>代表TaskでNew HIP、Open、Cache Pathを検証</li><li>Task PackageのExport/Importを小さなTaskで検証</li></ul>
+          <h3>Task受け渡し時</h3>
+          <ul class="checklist"><li>HIPを保存してLauncherをRefresh</li><li>Used Cache名とVersionを記録</li><li>Task PackageをExport</li><li>受取側でChecksum PreviewとProject差分を確認</li></ul>
+          <h3>削除時</h3>
+          <ul class="checklist"><li>Archiveで十分か確認</li><li>必要ならPackageまたは別媒体へBackup</li><li>Task名入力を確認して完全削除</li></ul>
+        </section>
+
+        <section class="doc-section" id="sup-db-admin" data-title="DB管理画面" data-keywords="database admin browser backup integrity repair history csv json localhost">
+          <h2>DB管理画面</h2>
+          <p><code>start_houd2_db_admin.bat</code>を実行すると、管理者向けの独立したlocalhost画面が開きます。</p>
+          <ul class="checklist"><li>全Tableを検索・並べ替え・CSV/JSON Export</li><li>SQLite Online BackupとIntegrity Check</li><li>Project/Task JSONを正本にした索引修復</li><li>履歴削除とUI State Resetは自動Backup後に実行</li></ul>
+          <div class="callout danger"><strong>Project/Taskの値はJSONが正本</strong>DB画面はRaw SQLや直接セル編集を提供しません。設定変更はLauncherのSettingsから行います。</div>
+        </section>
+      </article>
+
+      <article class="role-panel" data-role="developer" data-role-label="Developer">
+        <header class="role-intro">
+          <span class="eyebrow">Engineering Reference</span>
+          <h2>Developer向け</h2>
+          <p>HouD2Launcherの責任境界、永続化、Houdini subprocess、Cache解析、Task Package、安全性、テスト方法を実装ベースでまとめています。</p>
+        </header>
+
+        <section class="doc-section" id="dev-overview" data-title="Architecture Overview" data-keywords="architecture application context layers core houdini database settings ui">
+          <h2>Architecture Overview</h2>
+          <div class="flow">
+            <div class="flow-item"><b>PySide6 UI</b><br>Panels / Dialogs</div><div class="flow-item"><b>ApplicationContext</b><br>Dependency wiring</div><div class="flow-item"><b>Core Services</b><br>Models / Paths</div><div class="flow-item"><b>Houdini Adapters</b><br>hython / process</div><div class="flow-item"><b>JSON + SQLite</b><br>Canonical / Index</div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Package</th><th>責任</th><th>依存上のルール</th></tr></thead>
+            <tbody>
+              <tr><td><code>core</code></td><td>Pydantic models、PathResolver、Project/Task/HIP/Cache/Package service</td><td>PySide6とHOMをImportしない</td></tr>
+              <tr><td><code>houdini</code></td><td>Installation検出、互換性、環境構築、Houdini/Hython起動、HIP probe</td><td>HOMはHython側scriptへ隔離</td></tr>
+              <tr><td><code>database</code></td><td>SQLite index、History、UI state</td><td>JSONを正本として再構築可能</td></tr>
+              <tr><td><code>settings</code></td><td>Settings package、diff、backup、atomic import</td><td>秘密値をExportしない</td></tr>
+              <tr><td><code>ui</code></td><td>3カラムMainWindow、Panels、Dialogs、Theme</td><td>重い処理はOperationThread</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+
+        <section class="doc-section" id="dev-source" data-title="Source Map" data-keywords="source files modules main window models resolver cache manager task package repository">
+          <h2>Source Map</h2>
+          <div class="path-tree" data-copy>src/houd2launcher/
+├─ application.py                  ApplicationContext / service wiring
+├─ core/
+│  ├─ models.py                    Persisted Pydantic schema
+│  ├─ path_resolver.py             Canonical path + containment
+│  ├─ project_manager.py           Project lifecycle / stale ID repair
+│  ├─ task_manager.py              Task lifecycle / permanent delete
+│  ├─ hip_manager.py               HIP discovery / metadata / version up
+│  ├─ cache_manager.py             geo_cache inventory / Used matching
+│  ├─ task_package.py              Export / validation / import
+│  └─ environment.py               Layered env + expression variables
+├─ houdini/
+│  ├─ launcher.py                  Houdini / Hython subprocess
+│  ├─ cache_probe.py               HOM reference extraction
+│  ├─ cache_scanner.py             Probe orchestration
+│  └─ process_options.py           Hidden Windows background console
+├─ api/catalog_server.py           Authenticated localhost Cache Catalog
+├─ admin/                          Standalone DB browser server / service
+├─ database/                       SQLite schema / repositories
+├─ settings/                       Settings export / diff / atomic import
+└─ ui/                             MainWindow / Panels / Dialogs / QSS
+
+houdini/
+├─ python/houd2_cache/             Context / paths / manifest / HDA behavior
+├─ scripts/build_cache_hdas.py     Reproducible HDA library builder
+├─ scripts/test_cache_hdas.py      Hython integration test
+└─ otls/houd2_cache.hdalc          Generated Cache In / Cache Out definitions</div>
+        </section>
+
+        <section class="doc-section" id="dev-entry-reference" data-title="起動スクリプトとApplication" data-keywords="script file function reference entry point application context setup build bat main">
+          <h2>起動スクリプトとApplication</h2>
+          <p class="lead">実行入口、Dependency構築、開発環境構築、配布Buildを担当するファイルです。</p>
+
+          <details class="file-reference" open>
+            <summary><code>run_houd2launcher.py</code> / <code>src/houd2launcher/app.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">通常Launcherの最小Entry Pointです。BATは<code>pythonw.exe</code>で前者を起動し、後者へ処理を渡します。</p>
+              <ul class="function-list">
+                <li><code>app.main()</code><span>QApplication、Fusion Style、Theme、ApplicationContext、MainWindowを生成し、Qt Event Loopを開始します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>src/houd2launcher/application.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">ServiceとRepositoryを一度だけ組み立てるComposition Rootです。</p>
+              <ul class="function-list">
+                <li><code>ApplicationContext.create(root)</code><span>設定、SQLite、PathResolver、各Manager、Cache Catalog/API、Houdini Adapterを生成して依存関係を接続します。</span></li>
+                <li><code>save_settings()</code><span>Launcher SettingsをAtomic Writeで保存します。</span></li>
+                <li><code>shutdown()</code><span>localhost Catalog APIなど、Application所有のBackground Resourceを停止します。</span></li>
+                <li><code>_configure_logging()</code><span>Data Home配下のLog出力とLevelを設定します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>run_houd2_db_admin.py</code> / <code>src/houd2launcher/admin/server.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Launcher GUIとは独立した管理者用DB Browserをlocalhostで起動します。</p>
+              <ul class="function-list">
+                <li><code>make_handler(service, token)</code><span>Token検証付きHTTP Handlerを生成し、Table閲覧、Export、Backup、Integrity、Repair APIを公開します。</span></li>
+                <li><code>server.main()</code><span>Loopback Portを確保し、一時Tokenを生成して管理画面を既定Browserで開きます。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>start_houd2launcher.bat</code> / <code>start_houd2_db_admin.bat</code> / <code>open_houd2_handbook.bat</code></summary>
+            <div class="file-reference-body"><p class="file-purpose">Windows用の利用者向けShortcutです。LauncherはConsoleを残さない<code>pythonw.exe</code>、DB Adminは管理Server、HandbookはこのHTMLを開きます。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>scripts/setup.ps1</code> / <code>scripts/build_windows.ps1</code></summary>
+            <div class="file-reference-body"><p class="file-purpose"><code>setup.ps1</code>はVirtual EnvironmentとDependencyを準備し、<code>build_windows.ps1</code>はPyInstallerによるWindows配布物を生成します。</p></div>
+          </details>
+        </section>
+
+        <section class="doc-section" id="dev-core-reference" data-title="Coreファイル・関数リファレンス" data-keywords="core files functions models config validation resolver environment project task hip cache package version">
+          <h2>Coreファイル・関数リファレンス</h2>
+          <p class="lead"><code>core</code>はPySide6とHoudini HOMに依存しない業務ロジックです。UIから直接Pathを組み立てず、ここを経由します。</p>
+
+          <details class="file-reference" open>
+            <summary><code>core/models.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">JSONへ保存するPydantic Schemaと共通Validatorです。</p>
+              <ul class="function-list">
+                <li><code>StrictModel</code><span>未知Fieldを拒否し、Assignment時もValidationする全設定Modelの基底です。</span></li>
+                <li><code>ProjectSettings / TaskSettings / HipMetadata</code><span>Project、Task、HIPのCanonical Dataを表し、名前、Root、Environment、Folder Roleを検証します。</span></li>
+                <li><code>HoudiniInstallation / LauncherSettings</code><span>PC固有のHoudini登録とLauncher既定値を保持します。</span></li>
+                <li><code>FolderDefinition / FrameSettings / NamingSettings / HoudiniPolicy</code><span>階層、Frame/FPS、HIP命名、Version Policyを型付きで表します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/config.py</code> / <code>core/validation.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">安全なJSON I/Oと共通入力・Path検証です。</p>
+              <ul class="function-list">
+                <li><code>launcher_home()</code><span>LauncherのPCローカルData Homeを返します。</span></li>
+                <li><code>atomic_write_model()</code><span>一時Fileへ書いてから置換し、途中失敗で設定正本を壊さないようにします。</span></li>
+                <li><code>load_model() / load_json_object() / backup_file()</code><span>型付きLoad、Raw JSON読込、変更前Backupを担当します。</span></li>
+                <li><code>validate_filename_component()</code><span>Windows禁止文字、予約名、末尾のSpace/Dotなどを拒否します。</span></li>
+                <li><code>validate_relative_path() / ensure_within()</code><span>Absolute Path、<code>..</code>、Root外Escapeを拒否します。</span></li>
+                <li><code>validate_environment_name()</code><span>Environment Variable名として安全なIdentifierだけを許可します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/path_resolver.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Project設定からすべての管理Pathを一元解決します。</p>
+              <ul class="function-list">
+                <li><code>resolve_project_root() / resolve_task_root()</code><span>Canonical Project RootとProject直下のTask Rootを返します。</span></li>
+                <li><code>resolve_houdini_root() / resolve_houdini_folder()</code><span>Task内のHoudini作業Rootと設定された相対Folderを解決します。</span></li>
+                <li><code>resolve_role()</code><span><code>geo_cache</code>、<code>alembic</code>など論理Roleから物理Folderを解決します。</span></li>
+                <li><code>resolve_*_metadata_path() / resolve_thumbnail_path() / resolve_hip_path()</code><span>Project、Task、HIP Metadata、Thumbnail、命名済みHIPのPathを生成します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/environment.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">LauncherからHoudiniへ渡すEnvironmentとOverview表示用Expression Environmentを生成します。</p>
+              <ul class="function-list">
+                <li><code>build()</code><span>OS、Launcher、Project、Task、Open時Override、保護済み<code>HOUD2_*</code>の順でProcess Environmentを構築します。</span></li>
+                <li><code>expression_environment()</code><span>Tokenを展開した安全な変数一覧を返します。API Tokenは含めません。</span></li>
+                <li><code>_resolve_variables() / _expand_context()</code><span>再帰的な<code>{token}</code>展開、未知Token、循環参照を検出します。</span></li>
+                <li><code>_apply_search_paths()</code><span><code>PYTHONPATH</code>と<code>HOUDINI_OTLSCAN_PATH</code>へHDA連携Pathを追加します。</span></li>
+                <li><code>_frame_variables()</code><span><code>TASK_NAME</code>、<code>SHOT_FRAME_START</code>、<code>SHOT_FRAME_END</code>などを生成します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/project_manager.py</code> / <code>core/task_manager.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">ProjectとTaskの作成、登録、変更、Archive、完全削除を管理します。</p>
+              <ul class="function-list">
+                <li><code>ProjectManager.create() / add_existing()</code><span>新規Projectを初期化、または既存<code>project.json</code>をDBへ登録します。</span></li>
+                <li><code>ProjectManager.registered()</code><span>DBとCanonical JSONを照合し、同Rootの古いProject ID登録を安全に修復します。</span></li>
+                <li><code>TaskManager.create() / discover()</code><span>標準Folderを生成し、Project配下のTask JSONを発見・Index化します。</span></li>
+                <li><code>rename() / archive() / set_thumbnail()</code><span>Task名、Status、ThumbnailをCanonical DataとFilesystemへ反映します。</span></li>
+                <li><code>delete_permanently()</code><span>Project直下、Project ID一致、非Linkを再検証してTask全体を完全削除します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/hip_manager.py</code> / <code>core/versioning.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">管理HIPの発見、命名、Version Up、Metadataを担当します。</p>
+              <ul class="function-list">
+                <li><code>list_hips()</code><span>命名規則に一致するHIPとSidecar Metadataを統合してVersion一覧を返します。</span></li>
+                <li><code>next_path()</code><span>既存Versionから次の空き番号とLicenseに合う拡張子の保存先を計算します。</span></li>
+                <li><code>register_created() / save_metadata()</code><span>作成済みHIPだけをJSONとSQLiteへ登録します。</span></li>
+                <li><code>version_up()</code><span>元HIPを新VersionへCopyし、Task/User/Installation Metadataを更新します。</span></li>
+                <li><code>parse_managed_hip_name() / next_version()</code><span>TemplateからHIP名を解析し、欠番を考慮した次Versionを返します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/cache_manager.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Launcher Cachesタブ用の全Cache在庫、Used判定、集約、完全削除です。</p>
+              <ul class="function-list">
+                <li><code>discover()</code><span><code>geo_cache</code>を再帰走査し、BGEO、VDB、ABC、SIM、USDをCache名とVersionへ分類してHIP参照と照合します。</span></li>
+                <li><code>group_cache_records()</code><span>Version Recordを親Cacheへまとめ、合計容量、File数、Used状態を集約します。</span></li>
+                <li><code>delete_permanently()</code><span>VersionまたはCache全体を削除します。Role Root自身、外部Path、Linkは拒否します。</span></li>
+                <li><code>_matching_nodes()</code><span>正規化したVersion Directory同士を比較し、フレーム範囲に依存せずUsed Nodeを返します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/cache_catalog.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">HDA向けのProject、Task、Cache、Version Catalogを構築します。</p>
+              <ul class="function-list">
+                <li><code>list_projects() / list_tasks()</code><span>HDAのDynamic Menu用にIDと表示名を返します。</span></li>
+                <li><code>list_caches() / versions() / find_cache()</code><span>Task単位のManifest在庫、Version一覧、Cache ID検索を提供します。</span></li>
+                <li><code>_from_manifest()</code><span><code>cache_manifest.json</code>を正本としてCreator、Frame、Storage、相対PatternをCatalog Recordへ変換します。</span></li>
+                <li><code>_legacy()</code><span>Manifestがない既存CacheをFile列から推定し、Legacy Recordとして公開します。</span></li>
+                <li><code>_ensure_within() / _infer_pattern()</code><span>Geo Root外Pathを拒否し、連番Tokenを含む読込Patternを推定します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/task_package.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Cacheを除外したTask受け渡しPackageをAtomicにExport/Importします。</p>
+              <ul class="function-list">
+                <li><code>export()</code><span>Staging FolderへCopyし、SHA-256 Manifestを検証後、完成名へ切り替えます。</span></li>
+                <li><code>preview_import()</code><span>Schema、Checksum、Path Traversal、欠損、Project Context差分、Import後のTask名を事前計算します。</span></li>
+                <li><code>import_package()</code><span>同名時の<code>_copyN</code>化、新Task ID、HIP名・Metadata更新を行ってTarget Projectへ配置します。</span></li>
+                <li><code>_excluded_paths()</code><span>設定されたCache Roleと旧<code>.houd2/trash/caches</code>をPackage対象外にします。</span></li>
+                <li><code>_safe_package_relative() / _sha256()</code><span>POSIX相対Pathを検証し、各Fileの完全性Hashを計算します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/exceptions.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose"><code>PathSafetyError</code>、<code>DuplicateRegistrationError</code>、<code>EnvironmentResolutionError</code>、<code>HoudiniLaunchError</code>、<code>SettingsImportError</code>など、UIで利用者向けMessageへ変換するDomain Errorを定義します。</p></div>
+          </details>
+        </section>
+
+        <section class="doc-section" id="dev-houdini-reference" data-title="Launcher Houdini連携リファレンス" data-keywords="houdini scripts functions launcher hython cache probe scanner installation compatibility process no window">
+          <h2>Launcher Houdini連携リファレンス</h2>
+
+          <details class="file-reference" open>
+            <summary><code>houdini/launcher.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">選択InstallationのHython検証、HIP作成、Houdini起動を担当します。</p>
+              <ul class="function-list">
+                <li><code>extension_for_license()</code><span>Commercial、Indie、Apprenticeから<code>.hip</code>、<code>.hiplc</code>、<code>.hipnc</code>を決定します。</span></li>
+                <li><code>probe_license() / validate_hip_creation()</code><span>HythonのLicenseを取得し、一時HIPを実際にSaveできるか検証します。</span></li>
+                <li><code>create_blank_hip()</code><span>正しいEnvironmentと拡張子で空HIPを作り、成功確認後だけ登録します。</span></li>
+                <li><code>_run_hython()</code><span>Timeout、標準出力、Error変換を共通化し、WindowsではConsole非表示で実行します。</span></li>
+                <li><code>open_hip()</code><span>選択した<code>houdini.exe</code>へHIP、Environment、<code>waitforui</code> Startup Scriptを渡して直接起動します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/cache_probe.py</code> / <code>houdini/cache_scanner.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">選択HIPをHythonで読み、標準File CacheとHouD2 Cache Inの実参照をLauncherへ返します。</p>
+              <ul class="function-list">
+                <li><code>_file_cache_reference()</code><span>非Bypassかつ<code>loadfromdisk</code>有効なFile Cacheの<code>sopoutput</code>を取得します。</span></li>
+                <li><code>_houd2_owner()</code><span>内部File SOPがどのHouD2 Cache In/Out HDAに属するかを識別し、重複検出を防ぎます。</span></li>
+                <li><code>_houd2_cache_in_reference()</code><span>Cache Inの選択情報から解決済みFile PatternをUsed参照として明示的に返します。</span></li>
+                <li><code>cache_probe.main()</code><span>HIPをLoadし、抽出したReferenceをJSON Marker付き標準出力へ出します。</span></li>
+                <li><code>HoudiniCacheScanner.scan()</code><span>非表示Hython Processを起動し、Probe結果とDisk全走査をCacheScanResultへ統合します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/apply_launch_settings.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose">Houdini UI起動完了後に実行され、<code>SHOT_FRAME_START/END</code>とFPSをGlobal Range、Playback Range、Current Frameへ反映します。<code>HOUD2_APPLY_*</code>で適用可否を制御します。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/process_options.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>hidden_console_options()</code><span>Windowsだけ<code>subprocess.CREATE_NO_WINDOW</code>を返します。Caches表示やHIP作成時の一瞬のcmd表示を防ぎ、通常のHoudini GUI起動には使いません。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/installation_detector.py</code> / <code>installation_manager.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">SideFX Installationの発見、手動登録、重複Merge、有効性、推奨Version選択です。</p>
+              <ul class="function-list">
+                <li><code>scan() / from_install_root()</code><span>既定Rootまたは指定RootからVersion、実行File、Hythonを検出します。</span></li>
+                <li><code>register() / merge_detected()</code><span>Installation IDで重複を避けてLauncher Settingsへ統合します。</span></li>
+                <li><code>validate() / enabled() / by_id()</code><span>実行Fileの存在、有効状態、ID検索を提供します。</span></li>
+                <li><code>select_preferred()</code><span>HIP、Task、Project、Launcher、Newestの優先順位で起動候補を選びます。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/compatibility.py</code> / <code>houdini/open_policy.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>assess_compatibility()</code><span>保存Versionと起動Versionを比較し、互換性LevelとWarningを返します。</span></li><li><code>should_show_open_dialog()</code><span>候補が複数、互換性Warning、推奨不一致などの場合にOpen Dialogが必要か判定します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>api/catalog_server.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>CatalogApiServer.start()</code><span><code>127.0.0.1</code>の空きPortでToken認証APIを開始し、Project/Task/Cache/Version/Refreshを公開します。</span></li><li><code>url</code><span>Houdini Environmentへ渡す一時API URLです。</span></li><li><code>stop()</code><span>HTTP Server Threadを安全に終了します。</span></li></ul></div>
+          </details>
+        </section>
+
+        <section class="doc-section" id="dev-hda-reference" data-title="Cache HDA Pythonリファレンス" data-keywords="hda python cache out cache in context paths manifest api client build hdalc marker function">
+          <h2>Cache HDA Pythonリファレンス</h2>
+          <p class="lead"><code>houdini/python/houd2_cache</code>はLauncher DBを読まず、Environment、localhost API、HIP位置、Manual Parameterだけを使う独立Packageです。</p>
+
+          <details class="file-reference" open>
+            <summary><code>houdini/python/houd2_cache/context.py</code></summary>
+            <div class="file-reference-body">
+              <ul class="function-list">
+                <li><code>Houd2Context</code><span>Project/Task/Houdini/Geo Root、User/Machine ID、API URL/Tokenを保持する不変Contextです。</span></li>
+                <li><code>resolve_houd2_context(node)</code><span>Environment、HIP位置、AdvancedのManual Rootの順でContextを解決し、見つからなければ明示Errorにします。</span></li>
+                <li><code>_from_environment() / _from_hip_file() / _from_manual_parameters()</code><span>各Fallback SourceをHoud2Contextへ変換します。</span></li>
+                <li><code>_validated() / _ensure_within() / _safe_relative()</code><span>Absolute Path、Task内Geo Root、Traversalを検証します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/python/houd2_cache/paths.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>validate_cache_name()</code><span>Cache名を安全な単一Folder Componentへ制限します。評価済み<code>$OS</code>もここを通ります。</span></li><li><code>next_cache_version()</code><span><code>v001</code>形式の既存Folderを走査して次Versionを返します。</span></li><li><code>build_cache_paths()</code><span>Version Root、<code>geo</code>、Manifest、Marker、File Patternを一括生成し、Geo Root外を拒否します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/python/houd2_cache/manifest.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>create_manifest()</code><span>Cache ID、相対Pattern、Frame、Creator、Storage、StatusをSchema化します。</span></li><li><code>write_manifest() / load_manifest() / validate_manifest()</code><span>JSONのAtomic保存、読込、必須Field検証を行います。</span></li><li><code>marker_attributes()</code><span>Manifestから安全な<code>houd2_*</code> Detail Attribute集合を作ります。</span></li><li><code>populate_marker_geometry() / write_marker()</code><span>1ポイントGeometryへAttributeを設定し<code>cache_marker.bgeo.sc</code>を保存します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/python/houd2_cache/cache_out.py</code></summary>
+            <div class="file-reference-body">
+              <ul class="function-list">
+                <li><code>save_to_disk() / save_current_frame()</code><span>HDA Button Callback。Frame Rangeまたは現在FrameのPublishを開始します。</span></li>
+                <li><code>update_preview()</code><span>現在のContext、Cache名、Versionから読み取り専用Resolved PathとStatusを更新します。</span></li>
+                <li><code>_save()</code><span><code>v###.__writing__</code>へ保存、File検証、Manifest/Marker生成、正式VersionへのRenameを統括します。</span></li>
+                <li><code>_configure_file_cache()</code><span>内部File Cacheの出力Pattern、Frame、Simulation、Filter ParameterをHDA値へ接続します。</span></li>
+                <li><code>cook_marker()</code><span>HDA出力を実Cacheではなく1ポイントMarker Geometryにします。</span></li>
+                <li><code>_refresh_catalog()</code><span>Publish成功後、利用可能ならLauncher CatalogをRefreshします。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/python/houd2_cache/cache_in.py</code></summary>
+            <div class="file-reference-body">
+              <ul class="function-list">
+                <li><code>project_menu() / task_menu() / cache_menu() / version_menu()</code><span>CatalogまたはLocal Manifestから連動するDynamic Menuを生成します。</span></li>
+                <li><code>selection_changed() / update_info()</code><span>選択変更時にCache Recordを解決し、Creator、Frame、容量、Source、Local Statusを表示します。</span></li>
+                <li><code>resolve_record()</code><span>Current/Specific Project・TaskとLatest/Specific Versionを1つのCatalog Recordへ解決します。</span></li>
+                <li><code>resolved_file()</code><span>相対File PatternをSource Geo Rootへ安全に結合し、内部File SOPが読めるPatternを返します。</span></li>
+                <li><code>_local_records()</code><span>API停止時にCurrent TaskのManifestとLegacy Cacheを走査します。</span></li>
+                <li><code>refresh_catalog() / reload_cache() / open_cache_folder()</code><span>明示操作としてCatalog更新、File Reload、Explorer表示を行います。</span></li>
+                <li><code>sync_to_local()</code><span>将来のLauncher Sync API用入口です。未提供時は未実装状態を明示し、Cook中には呼ばれません。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/python/houd2_cache/api_client.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>CatalogClient.projects() / tasks() / caches() / versions() / cache()</code><span>Token付きlocalhost Catalog GETを型の薄いList/Dictionaryとして返します。</span></li><li><code>refresh()</code><span>Catalogの再走査を要求します。</span></li><li><code>sync()</code><span>将来の明示Sync Endpoint用Clientです。</span></li><li><code>_request()</code><span>Timeout、Authorization Header、JSON Decode、HTTP Errorを<code>CatalogUnavailable</code>へ統一します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/scripts/build_cache_hdas.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose"><code>houd2::cache_out::1.0</code>と<code>houd2::cache_in::1.0</code>を再現可能に生成するHython Build Scriptです。</p>
+              <ul class="function-list">
+                <li><code>_cache_out_parameters() / _cache_in_parameters()</code><span>File Cache風のTab、Dynamic Menu、Read-only Info、Advanced Parameter Templateを定義します。Cache Out名の既定値は<code>$OS</code>です。</span></li>
+                <li><code>_build_cache_out() / _build_cache_in()</code><span>内部SOP Network、Parameter参照、Python Module、Node Type定義を作成します。</span></li>
+                <li><code>_button() / _menu() / _dynamic_menu() / _readonly() / _collapsible()</code><span>Parameter UI生成を共通化するHelperです。</span></li>
+                <li><code>main()</code><span><code>houdini/otls/houd2_cache.hdalc</code>を作り、両Definitionが存在することを確認します。再実行可能です。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/scripts/test_cache_hdas.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>run(root)</code><span>日本語とSpaceを含む一時TaskでCache Out、Manifest、Marker、Catalog、Cache In、保存HIP再読込、Used ProbeをEnd-to-End検証します。</span></li><li><code>_server()</code><span>Test用Token認証Catalog APIをThread上で提供します。</span></li><li><code>main()</code><span>指定FolderまたはTemporary DirectoryでIntegration Testを実行します。</span></li></ul></div>
+          </details>
+        </section>
+
+        <section class="doc-section" id="dev-storage-ui-reference" data-title="Database・Settings・UIリファレンス" data-keywords="database repository migrations settings admin ui main window panels dialogs functions">
+          <h2>Database・Settings・UIリファレンス</h2>
+
+          <details class="file-reference" open>
+            <summary><code>database/connection.py</code> / <code>database/migrations.py</code> / <code>database/repositories.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">SQLite接続、Schema作成、再構築可能IndexとHistory操作です。</p>
+              <ul class="function-list">
+                <li><code>Database.connect()</code><span>Foreign KeyとRow Factoryを設定したTransaction境界を提供します。</span></li>
+                <li><code>migrate()</code><span>Project、Task、HIP、Open/Activity/Import History、UI State Tableを冪等に作成します。</span></li>
+                <li><code>upsert_project() / replace_project_registration()</code><span>Project Rootの一意制約を守り、古いID登録を置換します。</span></li>
+                <li><code>upsert_task() / upsert_hip() / remove_task()</code><span>Canonical JSONから再構築できるIndexを更新します。</span></li>
+                <li><code>record_activity() / record_open() / record_settings_import()</code><span>監査Historyを追加します。</span></li>
+                <li><code>set_ui_state() / get_ui_state()</code><span>選択、Window Geometry、表示ModeなどPCローカルUI状態を保存します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>settings/diff.py</code> / <code>settings/exporter.py</code> / <code>settings/importer.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>diff_values()</code><span>Nested設定をField Path単位のBefore/After差分へ変換します。</span></li><li><code>build_package() / export_package()</code><span>秘密情報を除外したProject/Task Settings Packageを作成・保存します。</span></li><li><code>load_package() / preview_import()</code><span>Package SchemaとScopeを検証し、選択Sectionの差分を返します。</span></li><li><code>apply_import()</code><span>Backup後に候補Model全体をValidationし、成功時だけAtomic保存します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>admin/service.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>tables() / rows()</code><span>許可TableのSchema、件数、検索、Sort、Paging結果を返します。</span></li><li><code>export()</code><span>選択TableをCSVまたはJSONへ変換します。</span></li><li><code>backup() / integrity_check()</code><span>SQLite Online BackupとPRAGMA Integrity Checkを実行します。</span></li><li><code>clear_history() / reset_ui_state()</code><span>自動Backup後に履歴またはUI状態を削除します。</span></li><li><code>repair_indexes()</code><span>Canonical Project/Task JSONからSQLite Indexを再構築します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/main_window.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">3カラムUIのOrchestratorです。Dialog、Core Service、Panel Signalを接続し、重い処理をThreadへ渡します。</p>
+              <ul class="function-list">
+                <li><code>OperationThread.run()</code><span>CallableをWorker Threadで実行し、結果またはErrorをSignalで返します。</span></li>
+                <li><code>refresh_projects() / _load_tasks() / _select_task()</code><span>Project→Task→Detailsの選択状態と表示を同期します。</span></li>
+                <li><code>new_project() / new_task() / project_settings() / task_settings()</code><span>作成・設定DialogとCore Manager呼出しを仲介します。</span></li>
+                <li><code>new_hip() / version_up() / open_hip() / _launch_hip()</code><span>Installation選択、Compatibility確認、HIP作成・起動を統括します。</span></li>
+                <li><code>export_task_package() / import_task_package()</code><span>Folder選択、Background処理、Preview Dialog、完了後Refreshを行います。</span></li>
+                <li><code>scan_hip_caches() / delete_caches()</code><span>非表示Hython Scanと確認付き完全削除をBackground実行します。</span></li>
+                <li><code>delete_task_permanently()</code><span>強い警告とTask名完全一致を確認後、TaskManagerへ削除を依頼します。</span></li>
+                <li><code>closeEvent() / _restore_ui_state()</code><span>Window Geometry、Splitter、最後の選択を保存・復元します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/panels/project_panel.py</code> / <code>task_panel.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>set_projects() / current_project()</code><span>Project Card一覧、Favorite/Archive表示、現在選択を管理します。</span></li><li><code>set_tasks() / current_task() / set_view_mode()</code><span>Task検索、Sort、List/Grid、Thumbnail Size、現在選択を管理します。</span></li><li><code>_show_context_menu() / _context_menu()</code><span>対象Project/Taskに対応する右クリックCommandをSignalとして通知します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/panels/task_details_panel.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>set_task() / clear_task()</code><span>Overview、HIP、Caches、Settings、Historyの全Tab Contextを切り替えます。</span></li><li><code>_load_expression_environment()</code><span>現在Houdiniへ渡るExpression VariableをOverview Tableへ表示します。</span></li><li><code>set_cache_loading() / set_cache_result() / set_cache_error()</code><span>Cache ScanのLoading、Tree、Error Stateを描画します。</span></li><li><code>_rebuild_cache_table()</code><span>検索、Used Filter、Size Sortを適用しつつ親Cache・子Version構造を維持します。</span></li><li><code>_color_cache_item()</code><span>Usedを緑、Unusedを赤へ統一します。</span></li><li><code>_selected_cache_records() / _emit_cache_delete()</code><span>親選択は全Version、子選択は対象Versionだけを削除Requestへ変換します。</span></li></ul></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/dialogs/project_task_dialogs.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose"><code>NewProjectDialog</code>、<code>NewTaskDialog</code>、<code>ProjectSettingsDialog</code>、<code>TaskSettingsDialog</code>を定義します。<code>result_settings()</code>はUI値から完全なModel候補を作り、<code>accept()</code>はValidation成功時だけDialogを閉じます。<code>KeyValueTable</code>はEnvironment変数編集を共通化します。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/dialogs/launcher_settings_dialog.py</code> / <code>hip_open_dialog.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose">Houdini Auto Detect・手動登録・License検証をThread実行するLauncher Settingsと、Compatibility・Licenseを示すHIP Open/New HIP Dialogです。<code>result_settings()</code>、<code>selected_installation()</code>が検証済み選択結果を返します。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/dialogs/settings_import_dialog.py</code> / <code>task_package_dialog.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose">設定ImportのSection選択とDiff、Task PackageのFile数・容量・除外Role・Project Context差分・Import後Task名をPreviewします。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>ui/widgets.py</code> / <code>ui/theme.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>ElideLabel._update_elision()</code><span>狭いGridやCardで文字が飛び出さないよう、幅に合わせて省略表示しTooltipへ全文を残します。</span></li><li><code>field_with_help() / add_helped_row()</code><span>設定項目へSampleと説明文を一貫したLayoutで追加します。</span></li><li><code>apply_theme()</code><span>暗いGray基調のQSSをApplicationへ適用します。</span></li></ul></div>
+          </details>
+        </section>
+
+        <section class="doc-section" id="dev-persistence" data-title="Persistence and Schemas" data-keywords="json sqlite canonical schema project task hip manifest pydantic database tables migration">
+          <h2>Persistence and Schemas</h2>
+          <p><code>project.json</code>と<code>task.json</code>がauthoritativeです。SQLiteは高速表示、History、UI stateのためのローカル索引です。Project IDが同じRootのJSONとDBで食い違う場合、同じcanonical config pathを確認してDB登録を修復します。</p>
+          <div class="grid-2">
+            <div class="info-block"><h3>Canonical JSON</h3><p><code>houd2.project_settings</code><br><code>houd2.task_settings</code><br><code>houd2.hip_metadata</code><br><code>houd2.task_package</code></p></div>
+            <div class="info-block"><h3>SQLite Tables</h3><p><code>projects</code>、<code>tasks</code>、<code>hips</code>、<code>open_history</code>、<code>activity_history</code>、<code>settings_import_history</code>、<code>ui_state</code></p></div>
+          </div>
+          <h3>Strict Model Policy</h3>
+          <p>Pydanticは<code>extra="forbid"</code>とassignment validationを使用します。Schema Versionは現在すべて<code>1</code>です。未知Fieldを黙って捨てず、互換性問題を明示します。</p>
+        </section>
+
+        <section class="doc-section" id="dev-paths" data-title="Path Safety Invariants" data-keywords="path safety ensure within traversal symlink junction delete validation windows reserved">
+          <h2>Path Safety Invariants</h2>
+          <ul class="checklist">
+            <li>Project/Task/HIP/Role pathは<code>PathResolver</code>だけから生成</li>
+            <li>Task名とFilename componentはWindows禁止文字・予約名を拒否</li>
+            <li>Relative folderはAbsolute、空segment、<code>..</code>を拒否</li>
+            <li>Cache削除は<code>geo_cache</code> Root自身とRoot外を拒否</li>
+            <li>Task削除はProjectのdirect childだけを許可し、symlink/junctionを拒否</li>
+            <li>Task PackageはPOSIX relative path、Checksum、宣言外ファイル、linkを検証</li>
+          </ul>
+          <div class="callout danger"><strong>Delete APIへ未検証Pathを渡さない</strong>UI確認は安全境界ではありません。Core serviceで必ずcontainmentを再検証します。</div>
+        </section>
+
+        <section class="doc-section" id="dev-launch" data-title="Houdini Launch Flow" data-keywords="launch flow environment subprocess popen waitforui frame range fps hython blank hip">
+          <h2>Houdini Launch Flow</h2>
+          <div class="flow">
+            <div class="flow-item">Installation選択</div><div class="flow-item">Compatibility確認</div><div class="flow-item">Environment解決</div><div class="flow-item">houdini.exe直接起動</div><div class="flow-item">waitforui後Range適用</div>
+          </div>
+          <p>New HIPはライセンスprobe後、Hython helperで空HIPを作成し、期待Extensionとファイル存在を検証してからMetadataを登録します。Open Read Onlyは<code>%TEMP%/HouD2Launcher/read_only/{uuid}</code>へcopyしてread-only flagを付けます。</p>
+          <p>Open時は<code>apply_launch_settings.py</code>を使い、<code>SHOT_FRAME_START/END</code>、FPS、Global Range、Playback Range、Current FrameをUI起動後に適用します。</p>
+          <div class="callout success"><strong>Background HythonはConsole非表示</strong>License Probe、New HIP、Caches ScanにはWindowsの<code>CREATE_NO_WINDOW</code>を付けます。実際の<code>houdini.exe</code>起動には付けないため、Houdini UIは通常どおり表示されます。</div>
+        </section>
+
+        <section class="doc-section" id="dev-cache" data-title="Cache Discovery Algorithm" data-keywords="cache probe hom fileReferences filecache sopoutput expression used matching inventory version directory">
+          <h2>Cache Discovery Algorithm</h2>
+          <div class="flow">
+            <div class="flow-item">HIPをHython load</div><div class="flow-item">Active参照を抽出</div><div class="flow-item">geo_cache全走査</div><div class="flow-item">Cache / Version集約</div><div class="flow-item">実効Pathを照合</div>
+          </div>
+          <ol>
+            <li><code>cache_probe.py</code>がHIPをloadし、通常ノードは<code>hou.fileReferences()</code>から抽出します。</li>
+            <li><code>filecache::*</code>は<code>loadfromdisk != 0</code>かつ非Bypassの場合だけ<code>sopoutput</code>を取得します。Expression付きparameterはunexpanded stringに失敗するため、Expressionまたは評価値へfallbackします。</li>
+            <li><code>houd2::cache_in::1.0</code>は内部File SOPではなくHDA自身の選択状態から<code>resolved_file()</code>を取得し、選択VersionをUsed参照として返します。Cache Out内部File CacheはUsed Loadとして数えません。</li>
+            <li><code>cache_manager.py</code>は<code>geo_cache</code>配下のBGEO、VDB、ABC、SIM、USDを再帰走査し、先頭Cache名と<code>vN</code>で集約します。</li>
+            <li>Version directoryが一致した参照だけ<code>is_used=True</code>にし、フレーム存在やTask Frame Rangeは条件にしません。</li>
+          </ol>
+          <div class="callout warning"><strong>Usedは選択HIPに対する状態</strong>全Projectの依存解析ではありません。別HIPの参照を同時に集約しない設計です。</div>
+        </section>
+
+        <section class="doc-section" id="dev-package" data-title="Task Package Protocol" data-keywords="task package protocol manifest sha256 staging atomic import collision traversal secrets">
+          <h2>Task Package Protocol</h2>
+          <h3>Export</h3>
+          <p>Destination siblingの<code>.{name}.part-{uuid}</code>へcopyし、全fileのsize、mtime、SHA-256を記録します。自己検証後に<code>os.replace</code>で完成名へ切り替えます。Cache Role、link、secret-like environment、絶対Project Rootを除外します。</p>
+          <h3>Manifest</h3>
+          <pre data-copy><code>{
+  "format": "houd2.task_package",
+  "schema_version": 1,
+  "package_id": "uuid",
+  "source_project_id": "uuid",
+  "source_task_id": "uuid",
+  "excluded_roles": ["geo_cache", "alembic"],
+  "files": [{
+    "relative_path": "task/houdini/fire_v001_QA.hiplc",
+    "size": 123456,
+    "modified_at": "ISO-8601",
+    "sha256": "64 lowercase hex"
+  }]
+}</code></pre>
+          <h3>Import</h3>
+          <p>Schema、欠損、Checksum、Path Traversal、link、宣言外fileを検証してPreviewを返します。同名衝突時は<code>_copyN</code>、新Task ID、管理HIP filename/metadata更新。Installation IDはclearしてTarget Project defaultへfallbackします。</p>
+        </section>
+
+        <section class="doc-section" id="dev-delete" data-title="Destructive Operations" data-keywords="delete task cache permanent repository cascade confirmation background">
+          <h2>Destructive Operations</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>操作</th><th>Core境界</th><th>UI確認</th><th>DB</th></tr></thead>
+            <tbody>
+              <tr><td>Cache Version delete</td><td><code>geo_cache</code>直下のみ。Root自身、外部Path、linkを拒否。</td><td>不可逆警告。Usedを含む場合は強調。</td><td>CacheはIndex化しない</td></tr>
+              <tr><td>Task delete</td><td>Project direct child、非link、Project ID一致。</td><td>警告 + Task名完全一致。</td><td>Task/HIP indexを削除、Activityを記録</td></tr>
+            </tbody>
+          </table></div>
+          <p>UI threadをblockしないよう、削除は<code>OperationThread</code>で実行します。完了後にTask discoveryを再実行し、最後のTaskならDetail panelをclearします。</p>
+        </section>
+
+        <section class="doc-section" id="dev-testing" data-title="Development and Tests" data-keywords="pytest setup build pyinstaller tests smoke windows development">
+          <h2>Development and Tests</h2>
+          <pre data-copy><code># Setup
+.\scripts\setup.ps1
+
+# Run all tests
+.\.venv\Scripts\python.exe -m pytest -q
+
+# Start from source
+.\start_houd2launcher.bat
+
+# Build and test Cache HDAs
+hython houdini\scripts\build_cache_hdas.py
+hython houdini\scripts\test_cache_hdas.py
+
+# Windows distribution
+.\scripts\build_windows.ps1</code></pre>
+          <p>テストはProject/Task/HIP lifecycle、Path containment、Houdini compatibility/creation/open、Environment resolution、Cache Catalog/HDA、DB Admin、Settings import/export、Task Package security、UI basicsをカバーします。</p>
+          <div class="callout success"><strong>現在の基準</strong>通常Pythonテスト73件に加え、Houdini 22 HythonでCache Out→Catalog→Cache In、Marker/Manifest、日本語・Space Path、保存HIP再読込後のUsed参照を検証します。</div>
+        </section>
+
+        <section class="doc-section" id="dev-boundaries" data-title="Current Boundaries and Future Work" data-keywords="not implemented future ftp sync hda load cache render farm prism">
+          <h2>Current Boundaries and Future Work</h2>
+          <p>現在のLauncherは独立実装であり、Prism APIやPrism source codeを使用していません。</p>
+          <div class="grid-2">
+            <div class="info-block"><h3>実装済み</h3><p>Project/Task/HIP管理、Houdini選択、Environment、Cache在庫とUsed判定、Cache Out/In HDA、Catalog API、Task Package、DB Admin。</p></div>
+            <div class="info-block"><h3>未実装</h3><p>PC間Cache同期Provider、FTP/SFTP/FTPS、共有Server Registry、Render Farm連携、Houdini Python Panel。</p></div>
+          </div>
+          <p>将来のCache同期はLauncherのRole/Path/Task ID/Cache Version規約を利用しつつ、ネットワーク認証情報をProject JSONやTask Packageへ保存しない設計を維持します。</p>
+        </section>
+      </article>
+
+      <footer class="footer">HouD2Launcher Handbook · v0.2.0 implementation snapshot including Cache HDA · Last updated 2026-08-02</footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const tabs = [...document.querySelectorAll('.role-tab')];
+      const panels = [...document.querySelectorAll('.role-panel')];
+      const sideNav = document.getElementById('side-nav');
+      const search = document.getElementById('global-search');
+      const searchResults = document.getElementById('search-results');
+      let activeRole = localStorage.getItem('houd2-doc-role') || 'user';
+
+      const normalize = value => value.toLocaleLowerCase('ja').normalize('NFKC');
+
+      function sectionsFor(role) {
+        const panel = document.querySelector(`.role-panel[data-role="${role}"]`);
+        return panel ? [...panel.querySelectorAll('.doc-section')] : [];
+      }
+
+      function buildNav() {
+        sideNav.innerHTML = '<p class="side-title">On this page</p>';
+        sectionsFor(activeRole).forEach(section => {
+          const link = document.createElement('a');
+          link.href = `#${section.id}`;
+          link.textContent = section.dataset.title;
+          sideNav.appendChild(link);
+        });
+        updateCurrentNav();
+      }
+
+      function activateRole(role, updateHash = false) {
+        if (!panels.some(panel => panel.dataset.role === role)) role = 'user';
+        activeRole = role;
+        tabs.forEach(tab => {
+          const active = tab.dataset.roleTarget === role;
+          tab.classList.toggle('active', active);
+          tab.setAttribute('aria-selected', String(active));
+        });
+        panels.forEach(panel => panel.classList.toggle('active', panel.dataset.role === role));
+        localStorage.setItem('houd2-doc-role', role);
+        buildNav();
+        if (updateHash) history.replaceState(null, '', location.pathname + location.search);
+      }
+
+      function updateCurrentNav() {
+        const links = [...sideNav.querySelectorAll('a')];
+        let current = sectionsFor(activeRole)[0]?.id;
+        for (const section of sectionsFor(activeRole)) {
+          if (section.getBoundingClientRect().top <= 180) current = section.id;
+        }
+        links.forEach(link => link.classList.toggle('current', link.hash === `#${current}`));
+      }
+
+      function sectionRecord(section) {
+        const panel = section.closest('.role-panel');
+        return {
+          role: panel.dataset.role,
+          roleLabel: panel.dataset.roleLabel,
+          id: section.id,
+          title: section.dataset.title,
+          text: normalize(`${section.dataset.title} ${section.dataset.keywords || ''} ${section.textContent}`)
+        };
+      }
+
+      const records = [...document.querySelectorAll('.doc-section')].map(sectionRecord);
+
+      function renderSearch() {
+        const query = normalize(search.value.trim());
+        if (!query) {
+          searchResults.classList.remove('open');
+          searchResults.innerHTML = '';
+          return;
+        }
+        const tokens = query.split(/\s+/).filter(Boolean);
+        const matches = records.filter(item => tokens.every(token => item.text.includes(token))).slice(0, 18);
+        searchResults.innerHTML = `<div class="result-summary">${matches.length}件の章が見つかりました</div>`;
+        matches.forEach(match => {
+          const button = document.createElement('button');
+          button.className = 'search-result';
+          button.innerHTML = `<strong>${escapeHtml(match.title)}</strong><span>${escapeHtml(match.roleLabel)}</span>`;
+          button.addEventListener('click', () => {
+            activateRole(match.role);
+            searchResults.classList.remove('open');
+            document.getElementById(match.id).scrollIntoView({ behavior: 'smooth' });
+          });
+          searchResults.appendChild(button);
+        });
+        if (!matches.length) {
+          const empty = document.createElement('div');
+          empty.className = 'result-summary';
+          empty.textContent = '別の言葉で検索してください。例: Cache、Task Package、SHOT_FRAME_START';
+          searchResults.appendChild(empty);
+        }
+        searchResults.classList.add('open');
+      }
+
+      function escapeHtml(value) {
+        return value.replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+      }
+
+      tabs.forEach(tab => tab.addEventListener('click', () => activateRole(tab.dataset.roleTarget, true)));
+      search.addEventListener('input', renderSearch);
+      search.addEventListener('focus', renderSearch);
+      document.addEventListener('click', event => {
+        if (!event.target.closest('.search-wrap')) searchResults.classList.remove('open');
+      });
+      document.addEventListener('keydown', event => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+          event.preventDefault(); search.focus(); search.select();
+        }
+        if (event.key === '/' && !/input|textarea/i.test(document.activeElement.tagName)) {
+          event.preventDefault(); search.focus();
+        }
+        if (event.key === 'Escape') { searchResults.classList.remove('open'); search.blur(); }
+      });
+      window.addEventListener('scroll', updateCurrentNav, { passive: true });
+
+      document.querySelectorAll('[data-copy]').forEach(block => {
+        const button = document.createElement('button');
+        button.className = 'copy-button';
+        button.type = 'button';
+        button.title = 'Copy';
+        button.setAttribute('aria-label', 'コードをコピー');
+        button.textContent = 'Copy';
+        button.addEventListener('click', async () => {
+          const text = block.innerText.replace(/^Copy\s*/, '');
+          await navigator.clipboard.writeText(text);
+          button.textContent = 'Done';
+          setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+        });
+        block.appendChild(button);
+      });
+
+      const hashTarget = location.hash && document.querySelector(location.hash);
+      if (hashTarget) activeRole = hashTarget.closest('.role-panel')?.dataset.role || activeRole;
+      activateRole(activeRole);
+    })();
+  </script>
+</body>
+</html>
