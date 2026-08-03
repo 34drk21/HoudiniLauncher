@@ -25,6 +25,7 @@ Included:
 - Launcher-managed HIP metadata and read-only opening
 - Houdini installation detection and manual registration
 - Explicit Houdini version selection and compatibility warnings
+- Houdini FX-first launching with an explicit FX/Core edition selector
 - Layered environment variables and Houdini search paths
 - Project and task settings import/export with preview and backup
 - SQLite indexes, activity history, open history, and UI state
@@ -53,6 +54,9 @@ network transfers during a SOP cook.
 
 Houdini launched through HouD2Launcher automatically receives the bundled HDA
 and Python search paths. Create `HouD2 Cache Out` after the geometry to publish:
+
+The generated library is `houdini/otls/houd2_cache.hda` and must be rebuilt
+with a Commercial Houdini FX or Core license.
 
 ```text
 {geo_cache}/{cache_name}/v003/

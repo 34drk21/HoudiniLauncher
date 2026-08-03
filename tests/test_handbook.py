@@ -44,6 +44,7 @@ def test_handbook_contains_current_guides_and_code_reference() -> None:
         "HoudiniCacheScanner.scan()",
         "resolve_houd2_context(node)",
         "Cache HDA Pythonリファレンス",
+        "houdini/otls/houd2_cache.hda",
         "Database・Settings・UIリファレンス",
     ):
         assert required in html

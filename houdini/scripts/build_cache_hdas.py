@@ -390,22 +390,42 @@ def _build_cache_in(parent: hou.Node, library: Path) -> hou.Node:
 
 
 def _library_path() -> Path:
-    if len(sys.argv) > 1:
-        return Path(sys.argv[1]).expanduser().resolve()
-    license_name = str(hou.licenseCategory()).casefold()
-    extension = ".hdalc" if "indie" in license_name else ".hdanc" if "apprentice" in license_name or "noncommercial" in license_name else ".hda"
-    return (ROOT / "otls" / f"houd2_cache{extension}").resolve()
+    library = (
+        Path(sys.argv[1]).expanduser().resolve()
+        if len(sys.argv) > 1
+        else (ROOT / "otls" / "houd2_cache.hda").resolve()
+    )
+    if library.suffix.casefold() != ".hda":
+        raise RuntimeError("Cache HDA output must use the .hda extension")
+    return library
+
+
+def _require_commercial_license() -> None:
+    license_name = str(hou.licenseCategory())
+    if "commercial" not in license_name.casefold():
+        raise RuntimeError(
+            "Building houd2_cache.hda requires a Commercial Houdini FX or Core "
+            f"license. Active license: {license_name}"
+        )
+
+
+def _remove_previous_libraries(library: Path) -> None:
+    for extension in (".hda", ".hdalc", ".hdanc"):
+        candidate = library.with_suffix(extension)
+        if not candidate.exists():
+            continue
+        try:
+            hou.hda.uninstallFile(str(candidate))
+        except hou.OperationFailed:
+            pass
+        candidate.unlink()
 
 
 def main() -> int:
     library = _library_path()
+    _require_commercial_license()
     library.parent.mkdir(parents=True, exist_ok=True)
-    if library.exists():
-        try:
-            hou.hda.uninstallFile(str(library))
-        except hou.OperationFailed:
-            pass
-        library.unlink()
+    _remove_previous_libraries(library)
     obj = hou.node("/obj")
     container = obj.createNode("geo", "houd2_hda_builder")
     for child in container.children():

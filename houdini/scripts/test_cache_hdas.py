@@ -103,7 +103,9 @@ def run(root: Path) -> None:
     thread.start()
     os.environ["HOUD2_API_URL"] = f"http://127.0.0.1:{server.server_port}"
     os.environ["HOUD2_API_TOKEN"] = token
-    library = next((ROOT / "otls").glob("houd2_cache.hda*"))
+    library = ROOT / "otls" / "houd2_cache.hda"
+    if not library.is_file():
+        raise RuntimeError(f"Commercial HDA library is missing: {library}")
     hou.hda.installFile(str(library))
     try:
         container = hou.node("/obj").createNode("geo", "houd2_integration_test")

@@ -22,6 +22,7 @@ from ..core.models import (
 )
 from ..database.repositories import LauncherRepository
 from .process_options import hidden_console_options
+from .editions import resolve_houdini_edition
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,9 +227,11 @@ class HoudiniLauncher:
         user: str,
         read_only: bool = False,
         overrides: dict[str, str] | None = None,
+        edition: str | None = None,
     ) -> subprocess.Popen[bytes]:
         """Open a HIP through the chosen executable and record the operation."""
         self._validate_installation(installation)
+        selected_edition = resolve_houdini_edition(installation, edition)
         if not hip.path.is_file():
             raise HoudiniLaunchError(f"HIP file is missing: {hip.path}")
         open_path = self._read_only_copy(hip.path) if read_only else hip.path
@@ -245,7 +248,7 @@ class HoudiniLauncher:
             startup_script = Path(__file__).with_name("apply_launch_settings.py")
             process = self._popen(
                 [
-                    str(installation.houdini_executable),
+                    str(selected_edition.executable),
                     str(open_path),
                     "waitforui",
                     str(startup_script),
@@ -272,6 +275,7 @@ class HoudiniLauncher:
             {
                 "path": str(hip.path),
                 "installation": installation.version_string,
+                "edition": selected_edition.key,
                 "read_only": read_only,
             },
             task.task_id,

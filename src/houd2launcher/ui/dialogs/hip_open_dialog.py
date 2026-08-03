@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ...core.hip_manager import HipRecord
 from ...core.models import HoudiniInstallation
 from ...houdini.compatibility import assess_compatibility
+from ...houdini.editions import available_houdini_editions
 from ..widgets import add_helped_row
 
 
@@ -63,8 +64,13 @@ class HipOpenDialog(QDialog):
                 0,
             )
             self.open_with.setCurrentIndex(index)
-        self.open_with.currentIndexChanged.connect(self._update_warning)
+        self.open_with.currentIndexChanged.connect(self._installation_changed)
         form.addRow("Open With", self.open_with)
+        self.edition = QComboBox()
+        self.edition.setToolTip(
+            "Select the Houdini product UI. Houdini FX is preferred when available."
+        )
+        form.addRow("Edition", self.edition)
         mode = QWidget()
         mode_layout = QVBoxLayout(mode)
         mode_layout.setContentsMargins(0, 0, 0, 0)
@@ -93,11 +99,24 @@ class HipOpenDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self._update_warning()
+        self._installation_changed()
 
     def selected_installation(self) -> HoudiniInstallation:
         """Return the build selected in the dialog."""
         return self.open_with.currentData()
+
+    def selected_edition(self) -> str:
+        """Return the selected product UI key."""
+        return str(self.edition.currentData())
+
+    def _installation_changed(self) -> None:
+        installation = self.open_with.currentData()
+        self.edition.clear()
+        if installation is not None:
+            for edition in available_houdini_editions(installation):
+                self.edition.addItem(edition.label, edition.key)
+        self.edition.setEnabled(self.edition.count() > 1)
+        self._update_warning()
 
     def _update_warning(self) -> None:
         selected = self.open_with.currentData()

@@ -21,6 +21,7 @@ from ..application import ApplicationContext
 from ..core.config import atomic_write_model
 from ..core.hip_manager import HipRecord
 from ..core.models import HoudiniInstallation, ProjectSettings, TaskSettings
+from ..houdini.editions import available_houdini_editions
 from ..houdini.installation_manager import HoudiniInstallationManager
 from ..houdini.open_policy import should_show_open_dialog
 from ..settings.exporter import export_package
@@ -483,7 +484,8 @@ class MainWindow(QMainWindow):
             return
         assert self.current_project and self.current_task
         recommended = self._recommended_installation(hip, installations)
-        if not should_show_open_dialog(
+        has_edition_choice = len(available_houdini_editions(recommended)) > 1
+        if not has_edition_choice and not should_show_open_dialog(
             self.context.settings,
             self.current_project,
             hip,
@@ -512,13 +514,19 @@ class MainWindow(QMainWindow):
         if dialog.set_launcher_default.isChecked():
             self.context.settings.default_installation_id = installation.installation_id
             self.context.save_settings()
-        self._launch_hip(hip, installation, dialog.read_only.isChecked())
+        self._launch_hip(
+            hip,
+            installation,
+            dialog.read_only.isChecked(),
+            dialog.selected_edition(),
+        )
 
     def _launch_hip(
         self,
         hip: HipRecord,
         installation: HoudiniInstallation,
         read_only: bool,
+        edition: str | None = None,
     ) -> None:
         if not self.current_project or not self.current_task:
             return
@@ -531,6 +539,7 @@ class MainWindow(QMainWindow):
                 self.context.settings,
                 self._user_name(),
                 read_only,
+                edition=edition,
             )
             self.statusBar().showMessage(
                 f"Opened {hip.path.name} with {installation.display_name}", 8000

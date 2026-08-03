@@ -429,7 +429,7 @@
             <div class="info-block"><h3><code>.hipnc</code></h3><p>Non-Commercial。</p></div>
           </div>
           <h3>Open</h3>
-          <p>HIPごとの推奨Houdini、Task推奨、Project既定、Launcher既定の順に候補が決まります。Windowsのファイル関連付けは使わず、選択した<code>houdini.exe</code>を直接起動します。</p>
+          <p>HIPごとの推奨Houdini、Task推奨、Project既定、Launcher既定の順にVersion候補が決まります。選択InstallationにFXとCoreの両方がある場合はOpenダイアログの<b>Edition</b>で選択でき、既定はHoudini FXです。Windowsのファイル関連付けは使わず、FXは<code>houdinifx.exe</code>、Coreは<code>houdinicore.exe</code>を直接起動します。</p>
           <h3>Open Read Only</h3>
           <p>元HIPを変更しない一時コピーを開きます。内容確認や過去Versionの参照に使います。</p>
           <h3>Version Up</h3>
@@ -669,7 +669,7 @@ geo/smoke/v2/smoke_v2.1001.bgeo.sc</div>
             </tbody>
           </table></div>
           <p>Catalog APIはLauncher実行中だけ有効な<code>127.0.0.1</code>サービスです。URLと一時TokenはHoudini起動時の環境へ渡され、HDAがSQLiteを直接読むことはありません。別Project/TaskのプルダウンはCatalogを利用し、Current TaskはローカルManifestへFallbackします。</p>
-          <div class="callout warning"><strong>HDA更新後の確認</strong><code>houd2_cache.hdalc</code>を再ビルドしたら、既に開いているHoudiniではDefinitionをReloadするかHoudiniを再起動します。変更済みの既存Parameter値は保持され、既定値は新規ノードへ適用されます。</div>
+          <div class="callout warning"><strong>HDA更新後の確認</strong><code>houd2_cache.hda</code>を再ビルドしたら、既に開いているHoudiniではDefinitionをReloadするかHoudiniを再起動します。変更済みの既存Parameter値は保持され、既定値は新規ノードへ適用されます。</div>
         </section>
 
         <section class="doc-section" id="sup-operation" data-title="推奨運用チェックリスト" data-keywords="onboarding backup archive delete checklist operations">
@@ -742,7 +742,7 @@ houdini/
 ├─ python/houd2_cache/             Context / paths / manifest / HDA behavior
 ├─ scripts/build_cache_hdas.py     Reproducible HDA library builder
 ├─ scripts/test_cache_hdas.py      Hython integration test
-└─ otls/houd2_cache.hdalc          Generated Cache In / Cache Out definitions</div>
+└─ otls/houd2_cache.hda            Commercial Cache In / Cache Out definitions</div>
         </section>
 
         <section class="doc-section" id="dev-entry-reference" data-title="起動スクリプトとApplication" data-keywords="script file function reference entry point application context setup build bat main">
@@ -940,7 +940,18 @@ houdini/
                 <li><code>probe_license() / validate_hip_creation()</code><span>HythonのLicenseを取得し、一時HIPを実際にSaveできるか検証します。</span></li>
                 <li><code>create_blank_hip()</code><span>正しいEnvironmentと拡張子で空HIPを作り、成功確認後だけ登録します。</span></li>
                 <li><code>_run_hython()</code><span>Timeout、標準出力、Error変換を共通化し、WindowsではConsole非表示で実行します。</span></li>
-                <li><code>open_hip()</code><span>選択した<code>houdini.exe</code>へHIP、Environment、<code>waitforui</code> Startup Scriptを渡して直接起動します。</span></li>
+                <li><code>open_hip()</code><span>解決済みFX/Core実行ファイルへHIP、Environment、<code>waitforui</code> Startup Scriptを渡して直接起動します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>houdini/editions.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Installation内のHoudini FX / Core実行ファイルを検出し、FXを優先して安全に選択します。</p>
+              <ul class="function-list">
+                <li><code>available_houdini_editions()</code><span><code>houdinifx</code>、<code>houdinicore</code>の存在を調べ、利用可能なEditionをFX優先順で返します。</span></li>
+                <li><code>resolve_houdini_edition()</code><span>指定Editionを実行ファイルへ解決し、指定がなければFX、専用実行ファイルがなければ登録済みHoudiniへFallbackします。</span></li>
               </ul>
             </div>
           </details>
@@ -993,7 +1004,7 @@ houdini/
           </details>
         </section>
 
-        <section class="doc-section" id="dev-hda-reference" data-title="Cache HDA Pythonリファレンス" data-keywords="hda python cache out cache in context paths manifest api client build hdalc marker function">
+        <section class="doc-section" id="dev-hda-reference" data-title="Cache HDA Pythonリファレンス" data-keywords="hda python cache out cache in context paths manifest api client build commercial marker function">
           <h2>Cache HDA Pythonリファレンス</h2>
           <p class="lead"><code>houdini/python/houd2_cache</code>はLauncher DBを読まず、Environment、localhost API、HIP位置、Manual Parameterだけを使う独立Packageです。</p>
 
@@ -1061,7 +1072,7 @@ houdini/
                 <li><code>_cache_out_parameters() / _cache_in_parameters()</code><span>File Cache風のTab、Dynamic Menu、Read-only Info、Advanced Parameter Templateを定義します。Cache Out名の既定値は<code>$OS</code>です。</span></li>
                 <li><code>_build_cache_out() / _build_cache_in()</code><span>内部SOP Network、Parameter参照、Python Module、Node Type定義を作成します。</span></li>
                 <li><code>_button() / _menu() / _dynamic_menu() / _readonly() / _collapsible()</code><span>Parameter UI生成を共通化するHelperです。</span></li>
-                <li><code>main()</code><span><code>houdini/otls/houd2_cache.hdalc</code>を作り、両Definitionが存在することを確認します。再実行可能です。</span></li>
+                <li><code>main()</code><span>Commercial FX/Coreライセンスを確認して<code>houdini/otls/houd2_cache.hda</code>を作り、両Definitionが存在することを確認します。旧<code>.hdalc/.hdanc</code>は成功するビルド開始時に除去します。</span></li>
               </ul>
             </div>
           </details>
@@ -1175,11 +1186,11 @@ houdini/
         <section class="doc-section" id="dev-launch" data-title="Houdini Launch Flow" data-keywords="launch flow environment subprocess popen waitforui frame range fps hython blank hip">
           <h2>Houdini Launch Flow</h2>
           <div class="flow">
-            <div class="flow-item">Installation選択</div><div class="flow-item">Compatibility確認</div><div class="flow-item">Environment解決</div><div class="flow-item">houdini.exe直接起動</div><div class="flow-item">waitforui後Range適用</div>
+            <div class="flow-item">Installation選択</div><div class="flow-item">FX / Core選択</div><div class="flow-item">Compatibility確認</div><div class="flow-item">Environment解決</div><div class="flow-item">Edition実行ファイルを起動</div><div class="flow-item">waitforui後Range適用</div>
           </div>
           <p>New HIPはライセンスprobe後、Hython helperで空HIPを作成し、期待Extensionとファイル存在を検証してからMetadataを登録します。Open Read Onlyは<code>%TEMP%/HouD2Launcher/read_only/{uuid}</code>へcopyしてread-only flagを付けます。</p>
           <p>Open時は<code>apply_launch_settings.py</code>を使い、<code>SHOT_FRAME_START/END</code>、FPS、Global Range、Playback Range、Current FrameをUI起動後に適用します。</p>
-          <div class="callout success"><strong>Background HythonはConsole非表示</strong>License Probe、New HIP、Caches ScanにはWindowsの<code>CREATE_NO_WINDOW</code>を付けます。実際の<code>houdini.exe</code>起動には付けないため、Houdini UIは通常どおり表示されます。</div>
+          <div class="callout success"><strong>Background HythonはConsole非表示</strong>License Probe、New HIP、Caches ScanにはWindowsの<code>CREATE_NO_WINDOW</code>を付けます。実際のHoudini FX / Core起動には付けないため、Houdini UIは通常どおり表示されます。</div>
         </section>
 
         <section class="doc-section" id="dev-cache" data-title="Cache Discovery Algorithm" data-keywords="cache probe hom fileReferences filecache sopoutput expression used matching inventory version directory">

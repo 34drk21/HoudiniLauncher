@@ -10,8 +10,15 @@ from PySide6.QtWidgets import QApplication, QToolButton, QTreeWidget
 
 from houd2launcher.core.cache_manager import CacheRecord, CacheScanResult
 from houd2launcher.core.hip_manager import HipRecord
-from houd2launcher.core.models import HipMetadata, LauncherSettings, ProjectSettings, TaskSettings
+from houd2launcher.core.models import (
+    HipMetadata,
+    HoudiniInstallation,
+    LauncherSettings,
+    ProjectSettings,
+    TaskSettings,
+)
 from houd2launcher.core.path_resolver import PathResolver
+from houd2launcher.ui.dialogs.hip_open_dialog import HipOpenDialog
 from houd2launcher.ui.panels.project_panel import ProjectPanel
 from houd2launcher.ui.panels.task_details_panel import TaskDetailsPanel
 from houd2launcher.ui.panels.task_panel import TaskPanel
@@ -23,6 +30,47 @@ def _app() -> QApplication:
 
 def test_dark_is_the_launcher_default() -> None:
     assert LauncherSettings().theme == "dark"
+
+
+def test_hip_open_dialog_prefers_fx_and_offers_core(tmp_path: Path) -> None:
+    app = _app()
+    root = tmp_path / "Houdini 21.0.487"
+    root.mkdir()
+    for name in ("houdini.exe", "houdinifx.exe", "houdinicore.exe"):
+        (root / name).write_bytes(b"")
+    installation = HoudiniInstallation(
+        display_name="Houdini 21.0.487",
+        major=21,
+        minor=0,
+        build=487,
+        version_string="21.0.487",
+        install_root=root,
+        houdini_executable=root / "houdini.exe",
+    )
+    hip_path = tmp_path / "fx_v001_QA.hip"
+    hip_path.write_bytes(b"hip")
+    hip = HipRecord(
+        hip_path,
+        1,
+        "QA",
+        datetime.now(timezone.utc),
+        3,
+        HipMetadata(
+            task_id="task-fx",
+            hip_file=hip_path.name,
+            hip_version=1,
+            created_by="QA",
+        ),
+    )
+    dialog = HipOpenDialog(hip, [installation], installation)
+    assert dialog.edition.count() == 2
+    assert dialog.edition.itemData(0) == "fx"
+    assert dialog.edition.itemText(0) == "Houdini FX"
+    assert dialog.edition.itemData(1) == "core"
+    dialog.edition.setCurrentIndex(1)
+    assert dialog.selected_edition() == "core"
+    dialog.deleteLater()
+    app.processEvents()
 
 
 def test_project_and_task_panels_own_their_add_actions() -> None:
