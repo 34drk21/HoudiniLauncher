@@ -105,7 +105,7 @@ def resolved_file(node: Any) -> str:
         path = _resolved_pattern(record)
         _set(node, "resolved_geo_root", str(record["geo_root"]))
         _set(node, "resolved_file_pattern", str(path).replace("\\", "/"))
-        return str(_expand_frame(path)).replace("\\", "/")
+        return str(_expand_frame(path, record)).replace("\\", "/")
     except Exception as exc:
         _set(node, "local_status", f"INVALID: {exc}")
         return ""
@@ -115,7 +115,7 @@ def update_info(node: Any) -> None:
     try:
         record = resolve_record(node)
         pattern = _resolved_pattern(record)
-        current = _expand_frame(pattern)
+        current = _expand_frame(pattern, record)
         status = "READY" if current.is_file() else "MISSING"
         _set(node, "resolved_cache_id", str(record["cache_id"]))
         _set(node, "resolved_geo_root", str(record["geo_root"]))
@@ -127,10 +127,14 @@ def update_info(node: Any) -> None:
         _set(node, "info_created_at", str(record.get("created_at") or "Unknown"))
         _set(node, "info_description", str(record.get("description") or ""))
         _set(node, "info_type", str(record.get("cache_type") or "Unknown"))
-        _set(
-            node, "info_frames",
-            f"{record.get('frame_start', 0)}-{record.get('frame_end', 0)} step {record.get('frame_step', 1)} @ {record.get('fps', 0)} fps",
-        )
+        if _is_current_frame_cache(record):
+            frame_text = f"Current Frame {record.get('frame_start', 0)}"
+        else:
+            frame_text = (
+                f"{record.get('frame_start', 0)}-{record.get('frame_end', 0)} "
+                f"step {record.get('frame_step', 1)}"
+            )
+        _set(node, "info_frames", f"{frame_text} @ {record.get('fps', 0)} fps")
         _set(node, "info_storage", f"{record.get('file_count', 0)} files / {_format_size(int(record.get('size_bytes', 0)))}")
         _set(node, "info_source", f"{record.get('project_name', '')} / {record.get('task_name', '')}")
     except Exception as exc:
@@ -215,7 +219,17 @@ def _local_records(context: Any) -> list[dict[str, Any]]:
                         "creator_display_name": creator.get("display_name", "Unknown"),
                         "creator_machine_id": creator.get("machine_id", ""),
                         "frame_start": frame["start"], "frame_end": frame["end"],
-                        "frame_step": frame["step"], "fps": frame["fps"],
+                        "frame_step": frame["step"],
+                        "frame_mode": str(
+                            frame.get("mode")
+                            or (
+                                "current"
+                                if int(storage["file_count"]) == 1
+                                and int(frame["start"]) == int(frame["end"])
+                                else "range"
+                            )
+                        ),
+                        "fps": frame["fps"],
                         "file_count": storage["file_count"], "size_bytes": storage["size_bytes"],
                         "status": data["status"], "loadable": data["status"] == "complete",
                         "legacy": False,
@@ -237,7 +251,8 @@ def _local_records(context: Any) -> list[dict[str, Any]]:
                 "file_pattern": pattern, "description": "Legacy cache without HouD2 Manifest",
                 "created_at": "", "creator_user_id": "", "creator_display_name": "Unknown",
                 "creator_machine_id": "", "frame_start": 0, "frame_end": 0,
-                "frame_step": 1, "fps": 0.0, "file_count": len(files),
+                "frame_step": 1, "frame_mode": "range", "fps": 0.0,
+                "file_count": len(files),
                 "size_bytes": sum(item.stat().st_size for item in files),
                 "status": "complete" if pattern else "ambiguous", "loadable": bool(pattern),
                 "legacy": True,
@@ -278,15 +293,33 @@ def _resolved_pattern(record: dict[str, Any]) -> Path:
     return result
 
 
-def _expand_frame(pattern: Path) -> Path:
+def _expand_frame(pattern: Path, record: dict[str, Any] | None = None) -> Path:
     try:
         import hou
 
-        frame = int(round(hou.frame()))
+        current_frame = int(round(hou.frame()))
     except Exception:
-        frame = 1
+        current_frame = 1
+    frame = _frame_for_record(record or {}, current_frame)
     value = str(pattern)
     return Path(re.sub(r"\$F(?P<padding>\d+)", lambda match: f"{frame:0{int(match.group('padding'))}d}", value))
+
+
+def _frame_for_record(record: dict[str, Any], current_frame: int) -> int:
+    if _is_current_frame_cache(record):
+        return int(record.get("frame_start", current_frame))
+    return current_frame
+
+
+def _is_current_frame_cache(record: dict[str, Any]) -> bool:
+    mode = str(record.get("frame_mode", "")).casefold()
+    if mode:
+        return mode == "current"
+    return (
+        int(record.get("file_count", 0)) == 1
+        and int(record.get("frame_start", 0)) == int(record.get("frame_end", 0))
+        and int(record.get("frame_start", 0)) != 0
+    )
 
 
 def _menu(items: list[dict[str, Any]], token_key: str, label_key: str) -> list[str]:

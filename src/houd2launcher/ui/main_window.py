@@ -5,7 +5,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QByteArray, QThread, QUrl, Signal
+from PySide6.QtCore import (
+    QByteArray,
+    QFileSystemWatcher,
+    QThread,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -72,6 +79,15 @@ class MainWindow(QMainWindow):
         self.current_project: ProjectSettings | None = None
         self.current_task: TaskSettings | None = None
         self._threads: set[OperationThread] = set()
+        self._ignored_task_candidates: set[str] = set()
+        self._filesystem_watcher = QFileSystemWatcher(self)
+        self._filesystem_timer = QTimer(self)
+        self._filesystem_timer.setSingleShot(True)
+        self._filesystem_timer.setInterval(1200)
+        self._filesystem_watcher.directoryChanged.connect(
+            lambda _path: self._filesystem_timer.start()
+        )
+        self._filesystem_timer.timeout.connect(self._filesystem_changed)
         self.setWindowTitle("HouD2Launcher")
         self.resize(1480, 860)
         self.setMinimumSize(1080, 680)
@@ -189,12 +205,16 @@ class MainWindow(QMainWindow):
     def refresh_current(self) -> None:
         """Refresh current project tasks and HIP indexes."""
         if self.current_project:
+            self._ignored_task_candidates.clear()
             self._load_tasks(self.current_project)
+            if self.current_task:
+                self._select_task(self.current_task)
         else:
             self.refresh_projects()
 
     def _select_project(self, project: ProjectSettings) -> None:
         self.current_project = project
+        self._ignored_task_candidates.clear()
         if self.context.settings.remember_last_project:
             self.context.settings.last_project_id = project.project_id
             self.context.save_settings()
@@ -202,7 +222,31 @@ class MainWindow(QMainWindow):
 
     def _load_tasks(self, project: ProjectSettings) -> None:
         try:
-            tasks = self.context.tasks.discover(project)
+            recovery = self.context.folder_migrator.recover_pending(project)
+            if recovery:
+                LOGGER.warning("; ".join(recovery))
+            report = self.context.filesystem.reconcile(project)
+            candidates = [
+                name
+                for name in report.task_candidates
+                if name not in self._ignored_task_candidates
+            ]
+            if candidates:
+                adopted = False
+                for name in candidates:
+                    dialog = NewTaskDialog(project, self)
+                    dialog.setWindowTitle(f"Adopt Task Folder - {name}")
+                    dialog.name.setText(name)
+                    dialog.name.setReadOnly(True)
+                    dialog.owner.setText(self._user_name())
+                    if dialog.exec() == QDialog.DialogCode.Accepted:
+                        self.context.tasks.adopt_existing(project, dialog.settings())
+                        adopted = True
+                    else:
+                        self._ignored_task_candidates.add(name)
+                if adopted:
+                    report = self.context.filesystem.reconcile(project)
+            tasks = list(report.tasks)
             latest = {
                 task.task_id: next(iter(self.context.hips.list_hips(project, task)), None)
                 for task in tasks
@@ -213,9 +257,38 @@ class MainWindow(QMainWindow):
                 else None
             )
             self.task_panel.set_tasks(project, tasks, latest, selected)
-            self.statusBar().showMessage(f"{project.name}: {len(tasks)} task(s)")
+            if report.errors:
+                LOGGER.warning("Filesystem reconciliation: %s", "; ".join(report.errors))
+                self.statusBar().showMessage(
+                    f"{project.name}: {len(tasks)} task(s), "
+                    f"{len(report.errors)} filesystem warning(s)"
+                )
+            else:
+                self.statusBar().showMessage(f"{project.name}: {len(tasks)} task(s)")
+            self._configure_filesystem_watcher(project, tasks)
         except Exception as exc:
             self._error("Cannot load tasks", exc)
+
+    def _configure_filesystem_watcher(
+        self, project: ProjectSettings, tasks: list[TaskSettings]
+    ) -> None:
+        existing = self._filesystem_watcher.directories()
+        if existing:
+            self._filesystem_watcher.removePaths(existing)
+        paths = [self.context.resolver.resolve_project_root(project)]
+        paths.extend(
+            self.context.resolver.resolve_houdini_root(project, task)
+            for task in tasks
+        )
+        valid = [str(path) for path in paths if path.is_dir()]
+        if valid:
+            self._filesystem_watcher.addPaths(valid)
+
+    def _filesystem_changed(self) -> None:
+        if self.current_project:
+            self._load_tasks(self.current_project)
+            if self.current_task:
+                self._select_task(self.current_task)
 
     def _select_task(self, task: TaskSettings) -> None:
         if not self.current_project:
@@ -355,8 +428,47 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         try:
-            self.current_project = dialog.result_settings()
-            self.context.projects.save(self.current_project)
+            proposed = dialog.result_settings()
+            report = self.context.filesystem.reconcile(project)
+            migration = self.context.folder_migrator.plan(
+                project, proposed, list(report.tasks)
+            )
+            if migration.blockers:
+                QMessageBox.critical(
+                    self,
+                    "Cannot update Folder Structure",
+                    "Resolve these filesystem conflicts before saving:\n\n"
+                    + "\n".join(f"- {item}" for item in migration.blockers),
+                )
+                return
+            if migration.requires_confirmation:
+                moves = sum(item.kind == "move" for item in migration.actions)
+                creates = sum(item.kind == "create" for item in migration.actions)
+                details = "\n".join(
+                    f"- {item.task_name}: {item.role} -> {item.destination}"
+                    for item in migration.actions[:12]
+                )
+                if len(migration.actions) > 12:
+                    details += f"\n- ... and {len(migration.actions) - 12} more"
+                answer = QMessageBox.question(
+                    self,
+                    "Apply Folder Structure",
+                    f"Move {moves} folder(s) and create {creates} folder(s)?\n\n"
+                    f"{details}\n\nRemoved or disabled folders will not be deleted.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+                self.context.folder_migrator.apply(project, migration)
+                self.context.repository.record_activity(
+                    project.project_id,
+                    "folder_structure_migrated",
+                    {"moves": moves, "creates": creates},
+                )
+            self.current_project = proposed
+            self.context.projects.save(proposed)
+            self.context.folder_migrator.recover_pending(proposed)
             self.refresh_projects()
         except Exception as exc:
             self._error("Cannot save project settings", exc)

@@ -587,6 +587,10 @@ D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
             </tbody>
           </table></div>
           <p>RoleはProject内で一意、Relative Pathも一意である必要があります。絶対パス、<code>..</code>、空セグメントは禁止です。<b>Auto Create</b>はTask作成時に自動生成するか、<b>Enabled</b>はRoleを有効にするかを決めます。</p>
+          <h3>構造変更の反映</h3>
+          <p>既存RoleのRelative Pathを変更してSaveすると、全Taskの旧Pathと新PathをPreviewします。承認後に既存内容を新Pathへ移し、新しいAuto Create Roleを作成してからProject JSONを更新します。移動先に別データがある場合は保存を中止し、削除・無効化したRoleの旧Folderは自動削除しません。途中終了を検出した場合はMigration Journalから旧構造へ戻し、Project JSON保存後の完了済み移行はそのまま確定します。</p>
+          <h3>Explorerから追加したデータ</h3>
+          <p>LauncherはCurrent Project Rootと各Taskの<code>houdini</code>を監視します。Project直下のJSONなしFolderはTask候補として確認を表示し、採用すると<code>task.json</code>と標準構造を作ります。命名規則に合うHIPはHIP MetadataとSQLite索引へ自動登録されます。監視漏れは起動時、Project選択時、Refresh時の再照合で回復します。</p>
           <h3>Cache命名の推奨</h3>
           <div class="path-tree" data-copy>{role:geo_cache}/{cache_name}/v{version}/{cache_name}_v{version}.{frame:04d}.bgeo.sc
 
@@ -669,6 +673,7 @@ geo/smoke/v2/smoke_v2.1001.bgeo.sc</div>
             </tbody>
           </table></div>
           <p>Catalog APIはLauncher実行中だけ有効な<code>127.0.0.1</code>サービスです。URLと一時TokenはHoudini起動時の環境へ渡され、HDAがSQLiteを直接読むことはありません。別Project/TaskのプルダウンはCatalogを利用し、Current TaskはローカルManifestへFallbackします。</p>
+          <div class="callout"><strong>Current Frame Cache</strong>Cache OutをCurrent Frameで保存したVersionはManifestへ保存ModeとFrameを記録します。Cache Inはタイムラインの現在Frameに関係なく、その保存Frameの1ファイルを固定して読み込みます。旧Manifestも単一ファイルとFrame情報から互換判定します。</div>
           <div class="callout warning"><strong>HDA更新後の確認</strong><code>houd2_cache.hda</code>を再ビルドしたら、既に開いているHoudiniではDefinitionをReloadするかHoudiniを再起動します。変更済みの既存Parameter値は保持され、既定値は新規ノードへ適用されます。</div>
         </section>
 
@@ -755,6 +760,18 @@ houdini/
               <p class="file-purpose">通常Launcherの最小Entry Pointです。BATは<code>pythonw.exe</code>で前者を起動し、後者へ処理を渡します。</p>
               <ul class="function-list">
                 <li><code>app.main()</code><span>QApplication、Fusion Style、Theme、ApplicationContext、MainWindowを生成し、Qt Event Loopを開始します。</span></li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/folder_migration.py</code> / <code>core/filesystem_reconciler.py</code></summary>
+            <div class="file-reference-body">
+              <p class="file-purpose">Project Folder Structureの実データ移行と、Explorerから追加されたTask/HIPのCanonical JSON再照合を担当します。</p>
+              <ul class="function-list">
+                <li><code>FolderStructureMigrator.plan() / apply()</code><span>Role単位のMove/Create差分とBlockerを計画し、Task内Stagingを使って既存内容を移動します。</span></li>
+                <li><code>FilesystemReconciler.reconcile()</code><span>Task JSON、命名済みHIP、Sidecar Metadata、SQLite索引を再照合し、新規Task候補とErrorを返します。</span></li>
+                <li><code>adopt_task()</code><span>既存Folderの内容を残したままProject既定FrameとOwnerでTask Metadataを初期化します。</span></li>
               </ul>
             </div>
           </details>

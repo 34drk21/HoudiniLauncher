@@ -21,6 +21,8 @@ Included:
 
 - Multiple local projects and task folders
 - Configurable role-based folders below each task's `houdini` directory
+- Previewed migration of existing Task folders when Folder Structure changes
+- Explorer Task/HIP discovery with JSON and SQLite reconciliation
 - `.hip`, `.hiplc`, and `.hipnc` discovery and versioning
 - Launcher-managed HIP metadata and read-only opening
 - Houdini installation detection and manual registration
@@ -38,6 +40,7 @@ Included:
 - FPS and global/playback frame ranges applied after a HIP opens
 - `houd2::cache_out::1.0` HDA with atomic Version publishing and metadata Marker
 - `houd2::cache_in::1.0` HDA with Project, Task, Cache, and Version menus
+- Fixed-frame loading for Cache Out Versions saved in Current Frame mode
 - Localhost Cache Catalog API with creator and storage metadata
 - Independent administrator database browser with guarded maintenance actions
 
@@ -71,12 +74,46 @@ Version. The Cache Information tab shows its creator, creation time, frame
 range, size, source Task, and resolved local path. Another Project or Task is
 read directly from its registered local Geo Root.
 
-Rebuild and test the HDAs with a registered Houdini installation:
+### Building the HDA Library
+
+The `.hda` library must be authored by `hython` while it holds a Commercial
+Houdini FX or Core license. Having `houdinifx.exe` or `houdinicore.exe`
+installed is not itself proof that a Commercial license is available.
+
+1. Open PowerShell and move to the repository root.
+2. Check that `sesictrl` lists an available Commercial Houdini FX or Core
+   license. Close unneeded Houdini sessions first if all license seats are in use.
+3. Run the builder with the same Houdini version used by the project.
+4. Run the Hython integration test.
 
 ```powershell
-& "C:\Program Files\Side Effects Software\Houdini 22.0.368\bin\hython.exe" .\houdini\scripts\build_cache_hdas.py
-& "C:\Program Files\Side Effects Software\Houdini 22.0.368\bin\hython.exe" .\houdini\scripts\test_cache_hdas.py
+cd C:\Users\owner\Documents\HoudiniLauncher
+
+& "C:\Program Files\Side Effects Software\Houdini 22.0.368\bin\sesictrl.exe" print-license
+
+$hython = "C:\Program Files\Side Effects Software\Houdini 22.0.368\bin\hython.exe"
+& $hython .\houdini\scripts\build_cache_hdas.py
+& $hython .\houdini\scripts\test_cache_hdas.py
 ```
+
+Successful output creates:
+
+```text
+houdini/otls/houd2_cache.hda
+```
+
+The builder validates that the library contains both definitions:
+
+```text
+houd2::cache_in::1.0
+houd2::cache_out::1.0
+```
+
+If the active license is Indie, the builder stops instead of silently creating
+`houd2_cache.hdalc`. Activate a Commercial license and run it again. After a
+successful rebuild, restart Houdini or reload the asset definitions so existing
+sessions use the updated library. Replace `22.0.368` in the commands when
+building with another registered Houdini installation.
 
 ## Database Administration
 

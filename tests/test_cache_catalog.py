@@ -45,6 +45,7 @@ def test_catalog_lists_manifest_and_legacy_caches(project, repository, resolver)
     smoke = records[1]
     assert smoke["creator_display_name"] == "QA Artist"
     assert smoke["file_pattern"] == "smoke/v003/geo/smoke.$F4.bgeo.sc"
+    assert smoke["frame_mode"] == "range"
     assert smoke["loadable"] is True
     assert records[0]["legacy"] is True
     assert records[0]["creator_display_name"] == "Unknown"

@@ -46,6 +46,18 @@ class HipManager:
             metadata_path = self.resolver.resolve_hip_metadata_path(project, task, path)
             if metadata_path.is_file():
                 metadata = load_model(metadata_path, HipMetadata)
+                changed = False
+                if metadata.task_id != task.task_id:
+                    metadata.task_id = task.task_id
+                    changed = True
+                if metadata.hip_file != path.name:
+                    metadata.hip_file = path.name
+                    changed = True
+                if metadata.hip_version != parsed.version:
+                    metadata.hip_version = parsed.version
+                    changed = True
+                if changed:
+                    atomic_write_model(metadata_path, metadata)
             else:
                 metadata = HipMetadata(
                     task_id=task.task_id,
@@ -173,4 +185,3 @@ class HipManager:
         path = self.resolver.resolve_hip_metadata_path(project, task, hip_path)
         atomic_write_model(path, metadata)
         return path
-

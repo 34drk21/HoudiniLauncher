@@ -39,7 +39,8 @@ def _record(manifest: dict[str, object], geo_root: Path) -> dict[str, object]:
         "creator_display_name": creator["display_name"],
         "creator_machine_id": creator["machine_id"],
         "frame_start": frame["start"], "frame_end": frame["end"],
-        "frame_step": frame["step"], "fps": frame["fps"],
+        "frame_step": frame["step"], "frame_mode": frame.get("mode", "range"),
+        "fps": frame["fps"],
         "file_count": storage["file_count"], "size_bytes": storage["size_bytes"],
         "status": "complete", "loadable": True, "legacy": False,
     }
@@ -132,7 +133,10 @@ def run(root: Path) -> None:
         assert len(cache_out.geometry().points()) == 1
         manifest_path = Path(str(cache_out.evalParm("manifest_path")))
         manifest = load_manifest(manifest_path)
+        assert manifest["frame"]["mode"] == "current"
         records.append(_record(manifest, geo_root))
+
+        hou.setFrame(int(manifest["frame"]["start"]) + 10)
 
         cache_in = container.createNode("houd2::cache_in::1.0", "cache_in")
         for name, value in (("project_id", "project-test"), ("task_id", "task-test"), ("cache_name", "box_main")):

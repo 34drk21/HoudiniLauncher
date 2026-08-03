@@ -25,17 +25,8 @@ class TaskManager:
         task_root = self.resolver.resolve_task_root(project, task.name)
         if task_root.exists():
             raise FileExistsError(f"Task folder already exists: {task_root}")
-        metadata_path = self.resolver.resolve_task_metadata_path(project, task)
         try:
-            self.resolver.resolve_houdini_root(project, task).mkdir(parents=True)
-            (task_root / ".houd2" / "hips").mkdir(parents=True)
-            (task_root / ".houd2" / "thumbnails").mkdir(parents=True)
-            for folder in project.folders:
-                if folder.enabled and folder.auto_create:
-                    self.resolver.resolve_houdini_folder(
-                        project, task, folder.relative_path
-                    ).mkdir(parents=True, exist_ok=True)
-            atomic_write_model(metadata_path, task)
+            self._initialize(project, task)
         except OSError:
             if task_root.exists():
                 shutil.rmtree(task_root)
@@ -43,6 +34,31 @@ class TaskManager:
         self._index(project, task)
         self.repository.record_activity(
             project.project_id, "task_created", {"name": task.name}, task.task_id
+        )
+        return task
+
+    def adopt_existing(
+        self, project: ProjectSettings, task: TaskSettings
+    ) -> TaskSettings:
+        """Adopt an existing direct-child folder without removing its contents."""
+        if task.project_id != project.project_id:
+            raise ValueError("Task project ID does not match the selected project")
+        task_root = self.resolver.resolve_task_root(project, task.name)
+        metadata = self.resolver.resolve_task_metadata_path(project, task)
+        if not task_root.is_dir():
+            raise FileNotFoundError(task_root)
+        if metadata.exists():
+            raise FileExistsError(f"Task metadata already exists: {metadata}")
+        is_junction = getattr(task_root, "is_junction", lambda: False)
+        if task_root.is_symlink() or is_junction():
+            raise PathSafetyError(f"Linked Task folders cannot be adopted: {task_root}")
+        self._initialize(project, task)
+        self._index(project, task)
+        self.repository.record_activity(
+            project.project_id,
+            "task_adopted_from_filesystem",
+            {"name": task.name},
+            task.task_id,
         )
         return task
 
@@ -174,3 +190,17 @@ class TaskManager:
             task.status,
             task.modified_at.isoformat(),
         )
+
+    def _initialize(self, project: ProjectSettings, task: TaskSettings) -> None:
+        task_root = self.resolver.resolve_task_root(project, task.name)
+        self.resolver.resolve_houdini_root(project, task).mkdir(
+            parents=True, exist_ok=True
+        )
+        (task_root / ".houd2" / "hips").mkdir(parents=True, exist_ok=True)
+        (task_root / ".houd2" / "thumbnails").mkdir(parents=True, exist_ok=True)
+        for folder in project.folders:
+            if folder.enabled and folder.auto_create:
+                self.resolver.resolve_houdini_folder(
+                    project, task, folder.relative_path
+                ).mkdir(parents=True, exist_ok=True)
+        atomic_write_model(self.resolver.resolve_task_metadata_path(project, task), task)

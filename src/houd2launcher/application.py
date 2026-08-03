@@ -10,6 +10,8 @@ from .core.config import atomic_write_model, launcher_home, load_model
 from .core.cache_manager import CacheManager
 from .core.cache_catalog import CacheCatalogService
 from .core.environment import EnvironmentResolver
+from .core.filesystem_reconciler import FilesystemReconciler
+from .core.folder_migration import FolderStructureMigrator
 from .core.hip_manager import HipManager
 from .core.models import LauncherSettings
 from .core.path_resolver import PathResolver
@@ -36,6 +38,8 @@ class ApplicationContext:
     repository: LauncherRepository
     resolver: PathResolver
     environment: EnvironmentResolver
+    folder_migrator: FolderStructureMigrator
+    filesystem: FilesystemReconciler
     projects: ProjectManager
     tasks: TaskManager
     hips: HipManager
@@ -71,6 +75,8 @@ class ApplicationContext:
         cache_manager = CacheManager(resolver)
         task_manager = TaskManager(repository, resolver)
         projects = ProjectManager(repository, resolver)
+        folder_migrator = FolderStructureMigrator(resolver)
+        filesystem = FilesystemReconciler(task_manager, hip_manager, resolver)
         catalog = CacheCatalogService(projects, task_manager, resolver)
         catalog_api = CatalogApiServer(catalog)
         catalog_api.start()
@@ -83,6 +89,8 @@ class ApplicationContext:
             repository=repository,
             resolver=resolver,
             environment=environment,
+            folder_migrator=folder_migrator,
+            filesystem=filesystem,
             projects=projects,
             tasks=task_manager,
             hips=hip_manager,

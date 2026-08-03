@@ -15,7 +15,7 @@ SCHEMA_VERSION = 1
 def create_manifest(
     *, context: Any, cache_name: str, version: int, description: str,
     file_pattern: str, frame_start: int, frame_end: int, frame_step: int,
-    fps: float, file_count: int, size_bytes: int,
+    fps: float, file_count: int, size_bytes: int, current_only: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
@@ -27,6 +27,7 @@ def create_manifest(
         "frame": {
             "start": int(frame_start), "end": int(frame_end),
             "step": int(frame_step), "fps": float(fps),
+            "mode": "current" if current_only else "range",
         },
         "creator": {
             "user_id": context.user_id,
@@ -66,6 +67,11 @@ def validate_manifest(data: dict[str, Any]) -> None:
     pattern = str(data.get("file_pattern", ""))
     if not pattern or Path(pattern).is_absolute() or ".." in pattern.replace("\\", "/").split("/"):
         raise ValueError("Cache Manifest contains an unsafe file pattern")
+    frame = data.get("frame")
+    if not isinstance(frame, dict):
+        raise ValueError("Cache Manifest frame data is missing")
+    if frame.get("mode", "range") not in {"current", "range"}:
+        raise ValueError("Cache Manifest contains an invalid frame mode")
     serialized = json.dumps(data, ensure_ascii=False).casefold()
     for forbidden in ("password", "access_token", "session_token", "credential"):
         if forbidden in serialized:
@@ -95,6 +101,7 @@ def marker_attributes(data: dict[str, Any]) -> dict[str, object]:
         "houd2_frame_start": int(frame["start"]),
         "houd2_frame_end": int(frame["end"]),
         "houd2_frame_step": int(frame["step"]),
+        "houd2_frame_mode": str(frame.get("mode", "range")),
         "houd2_fps": float(frame["fps"]),
         "houd2_file_count": int(storage["file_count"]),
         "houd2_total_size": str(storage["size_bytes"]),

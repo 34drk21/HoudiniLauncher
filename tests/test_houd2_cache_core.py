@@ -66,4 +66,20 @@ def test_manifest_projection_has_no_absolute_paths_or_secrets() -> None:
     attrs = marker_attributes(data)
     assert attrs["houd2_creator_display_name"] == "Artist"
     assert attrs["houd2_total_size"] == "5000000000"
+    assert attrs["houd2_frame_mode"] == "range"
     assert "D:/" not in str(data)
+
+
+def test_current_frame_manifest_records_explicit_mode() -> None:
+    context = SimpleNamespace(
+        project_id="p", task_id="t", user_id="u",
+        user_display_name="Artist", machine_id="m",
+    )
+    data = create_manifest(
+        context=context, cache_name="still", version=1, description="test",
+        file_pattern="still/v001/geo/still.$F4.bgeo.sc",
+        frame_start=1012, frame_end=1012, frame_step=1, fps=24,
+        file_count=1, size_bytes=100, current_only=True,
+    )
+    assert data["frame"]["mode"] == "current"
+    assert marker_attributes(data)["houd2_frame_mode"] == "current"

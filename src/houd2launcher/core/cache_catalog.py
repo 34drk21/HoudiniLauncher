@@ -193,6 +193,15 @@ class CacheCatalogService:
             "frame_start": int(frame.get("start", 0)),
             "frame_end": int(frame.get("end", 0)),
             "frame_step": int(frame.get("step", 1)),
+            "frame_mode": str(
+                frame.get("mode")
+                or (
+                    "current"
+                    if int(storage.get("file_count", 0)) == 1
+                    and int(frame.get("start", 0)) == int(frame.get("end", 0))
+                    else "range"
+                )
+            ),
             "fps": float(frame.get("fps", 0.0)),
             "file_count": int(storage.get("file_count", 0)),
             "size_bytes": int(storage.get("size_bytes", 0)),
@@ -240,6 +249,7 @@ class CacheCatalogService:
             "frame_start": 0,
             "frame_end": 0,
             "frame_step": 1,
+            "frame_mode": "range",
             "fps": 0.0,
             "file_count": len(files),
             "size_bytes": sum(item.stat().st_size for item in files),
@@ -268,7 +278,8 @@ class CacheCatalogService:
             "file_pattern": "", "manifest_path": "", "description": "",
             "created_at": "", "creator_user_id": "",
             "creator_display_name": "Unknown", "creator_machine_id": "",
-            "frame_start": 0, "frame_end": 0, "frame_step": 1, "fps": 0.0,
+            "frame_start": 0, "frame_end": 0, "frame_step": 1,
+            "frame_mode": "range", "fps": 0.0,
             "file_count": 0, "size_bytes": 0, "status": "invalid",
             "loadable": False, "legacy": True, "version_root": str(version_root),
         }

@@ -111,6 +111,7 @@ def _save(node: Any, current_only: bool) -> None:
             file_pattern=paths.file_pattern,
             frame_start=frame_start, frame_end=frame_end, frame_step=frame_step,
             fps=float(hou.fps()), file_count=len(files), size_bytes=size,
+            current_only=current_only,
         )
         staging_manifest = paths.staging_root / "cache_manifest.json"
         staging_marker = paths.staging_root / "cache_marker.bgeo.sc"
