@@ -127,6 +127,13 @@ class TaskManager:
         task.status = "archived"
         self.save(project, task)
 
+    def restore(self, project: ProjectSettings, task: TaskSettings) -> None:
+        """Return an archived Task to active production status."""
+        if task.status != "archived":
+            raise ValueError(f"Task is not archived: {task.name}")
+        task.status = "active"
+        self.save(project, task)
+
     def delete_permanently(
         self, project: ProjectSettings, task: TaskSettings
     ) -> Path:

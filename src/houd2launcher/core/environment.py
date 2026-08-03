@@ -25,6 +25,7 @@ HOUDINI_AMPERSAND_PATHS = {
     "HOUDINI_TOOLBAR_PATH",
     "HOUDINI_ICON_PATH",
 }
+PYTHON_ENVIRONMENT_BLOCKLIST = {"PYTHONHOME", "PYTHONUSERBASE", "PYTHONSTARTUP"}
 
 
 class EnvironmentResolver:
@@ -48,9 +49,13 @@ class EnvironmentResolver:
         machine_id: str = "",
         api_url: str = "",
         api_token: str = "",
+        managed_hda_root: str = "",
+        managed_hda_version: str = "",
     ) -> dict[str, str]:
         """Resolve environment layers and append protected HOUD2 variables last."""
         environment = dict(base_environment if base_environment is not None else os.environ)
+        for name in PYTHON_ENVIRONMENT_BLOCKLIST:
+            environment.pop(name, None)
         environment.update(
             self.expression_environment(
                 project,
@@ -65,6 +70,8 @@ class EnvironmentResolver:
                 user_id=user_id,
                 machine_id=machine_id,
                 api_url=api_url,
+                managed_hda_root=managed_hda_root,
+                managed_hda_version=managed_hda_version,
             )
         )
         if api_token:
@@ -85,6 +92,8 @@ class EnvironmentResolver:
         user_id: str = "",
         machine_id: str = "",
         api_url: str = "",
+        managed_hda_root: str = "",
+        managed_hda_version: str = "",
     ) -> dict[str, str]:
         """Return launcher-managed variables available to Houdini expressions."""
         environment = {
@@ -111,7 +120,7 @@ class EnvironmentResolver:
         resolved = self._resolve_variables(merged, context, project, task)
         environment.update(resolved)
         self._apply_search_paths(environment, project, task, context)
-        self._apply_houd2_paths(environment, launcher_root)
+        self._apply_houd2_paths(environment, launcher_root, managed_hda_root)
         if project.houdini.set_job_to_houdini_root:
             environment["JOB"] = str(self.path_resolver.resolve_houdini_root(project, task))
         environment.update(self._frame_variables(task))
@@ -136,6 +145,8 @@ class EnvironmentResolver:
                 "HOUD2_MACHINE_ID": machine_id,
                 "HOUD2_API_URL": api_url,
                 "HOUD2_LAUNCHER_ROOT": launcher_root,
+                "HOUD2_HDA_ROOT": managed_hda_root,
+                "HOUD2_HDA_VERSION": managed_hda_version,
                 "HOUD2_HOUDINI_VERSION": (
                     f"{installation.major}.{installation.minor}" if installation else ""
                 ),
@@ -149,16 +160,27 @@ class EnvironmentResolver:
         return environment
 
     @staticmethod
-    def _apply_houd2_paths(environment: dict[str, str], launcher_root: str) -> None:
-        if not launcher_root:
+    def _apply_houd2_paths(
+        environment: dict[str, str], launcher_root: str, managed_hda_root: str
+    ) -> None:
+        if not launcher_root and not managed_hda_root:
             return
-        root = os.path.abspath(launcher_root)
-        integrations = {
-            "HOUDINI_OTLSCAN_PATH": os.path.join(root, "houdini", "otls"),
-            "PYTHONPATH": os.path.join(root, "houdini", "python"),
+        integrations: dict[str, list[str]] = {
+            "HOUDINI_OTLSCAN_PATH": [],
+            "PYTHONPATH": [],
         }
-        for variable, path in integrations.items():
-            values = [path]
+        if managed_hda_root:
+            managed = os.path.abspath(managed_hda_root)
+            integrations["HOUDINI_OTLSCAN_PATH"].append(os.path.join(managed, "otls"))
+            integrations["PYTHONPATH"].append(os.path.join(managed, "python"))
+        if launcher_root:
+            root = os.path.abspath(launcher_root)
+            integrations["HOUDINI_OTLSCAN_PATH"].append(
+                os.path.join(root, "houdini", "otls")
+            )
+            integrations["PYTHONPATH"].append(os.path.join(root, "houdini", "python"))
+        for variable, paths in integrations.items():
+            values = list(paths)
             existing = environment.get(variable, "")
             if existing:
                 values.append(existing)

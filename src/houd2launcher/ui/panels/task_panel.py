@@ -6,6 +6,7 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -22,6 +23,16 @@ from ...core.hip_manager import HipRecord
 from ...core.models import ProjectSettings, TaskSettings
 from ...core.path_resolver import PathResolver
 from ..widgets import ElideLabel
+
+
+def default_task_thumbnail_path() -> Path:
+    """Return the wide D2 placeholder used until a Task gets a thumbnail."""
+    return (
+        Path(__file__).resolve().parents[2]
+        / "resources"
+        / "icons"
+        / "houd2_task_placeholder.jpg"
+    )
 
 
 class TaskItemWidget(QWidget):
@@ -88,6 +99,8 @@ class TaskPanel(QWidget):
     rename_requested = Signal(object)
     duplicate_requested = Signal(object)
     archive_requested = Signal(object)
+    restore_requested = Signal(object)
+    archived_visibility_changed = Signal(bool)
     export_requested = Signal(object)
     import_requested = Signal(object)
     package_export_requested = Signal(object)
@@ -108,6 +121,10 @@ class TaskPanel(QWidget):
         title.setObjectName("PanelTitle")
         header.addWidget(title)
         header.addStretch()
+        self.show_archived = QCheckBox("Show Archived")
+        self.show_archived.setToolTip("Show archived Tasks in this list")
+        self.show_archived.toggled.connect(self._archived_toggled)
+        header.addWidget(self.show_archived)
         add_button = QToolButton()
         add_button.setText("+")
         add_button.setToolTip("New task")
@@ -173,11 +190,22 @@ class TaskPanel(QWidget):
         item = self.list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
+    def clear_tasks(self) -> None:
+        """Clear stale Task cards when no Project is selected or visible."""
+        self.project = None
+        self._tasks = []
+        self.list.clear()
+
     def _rebuild(self, selected_id: str | None = None) -> None:
         current = self.current_task()
         selected_id = selected_id or (current.task_id if current else None)
         search = self.search.text().strip().casefold()
-        items = [item for item in self._tasks if search in item[0].name.casefold()]
+        items = [
+            item
+            for item in self._tasks
+            if search in item[0].name.casefold()
+            and (self.show_archived.isChecked() or item[0].status != "archived")
+        ]
         sort_name = self.sort.currentText()
         if sort_name == "Name":
             items.sort(key=lambda item: item[0].name.casefold())
@@ -227,11 +255,16 @@ class TaskPanel(QWidget):
                 )
                 if path.is_file():
                     return path
-        return None
+        placeholder = default_task_thumbnail_path()
+        return placeholder if placeholder.is_file() else None
 
     def _selection_changed(self, current: QListWidgetItem | None) -> None:
         if current:
             self.task_selected.emit(current.data(Qt.ItemDataRole.UserRole))
+
+    def _archived_toggled(self, checked: bool) -> None:
+        self._rebuild()
+        self.archived_visibility_changed.emit(checked)
 
     def _activated(self, item: QListWidgetItem) -> None:
         self.task_activated.emit(item.data(Qt.ItemDataRole.UserRole))
@@ -240,6 +273,7 @@ class TaskPanel(QWidget):
         task = self.current_task()
         if task is None:
             return
+        archived = task.status == "archived"
         menu = QMenu(self)
         actions = (
             ("Open Latest HIP", lambda: self.open_requested.emit(task)),
@@ -253,7 +287,14 @@ class TaskPanel(QWidget):
             ("Open in Explorer", lambda: self.reveal_requested.emit(task)),
             ("Rename Task", lambda: self.rename_requested.emit(task)),
             ("Duplicate Task", lambda: self.duplicate_requested.emit(task)),
-            ("Archive Task", lambda: self.archive_requested.emit(task)),
+            (
+                "Restore Task" if archived else "Archive Task",
+                lambda: (
+                    self.restore_requested.emit(task)
+                    if archived
+                    else self.archive_requested.emit(task)
+                ),
+            ),
             ("Delete Task Permanently...", lambda: self.delete_requested.emit(task)),
         )
         for label, callback in actions:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -110,3 +111,41 @@ def test_expression_environment_lists_only_launcher_managed_values(
     assert environment["SHOT_FRAME_END"] == "1050"
     assert environment["SHOW"] == "fire"
     assert "PATH" not in environment
+
+
+def test_managed_hda_paths_are_child_only_and_python_globals_are_sanitized(
+    tmp_path: Path, project: ProjectSettings
+) -> None:
+    resolver = EnvironmentResolver(PathResolver())
+    task = TaskSettings(project_id=project.project_id, name="isolated")
+    base = {
+        "PATH": "system-path",
+        "PYTHONPATH": "existing-python",
+        "PYTHONHOME": "unsafe-home",
+        "PYTHONUSERBASE": "unsafe-userbase",
+        "PYTHONSTARTUP": "unsafe-startup",
+    }
+    before = dict(base)
+    managed = tmp_path / "managed hda"
+
+    environment = resolver.build(
+        project,
+        task,
+        _installation(tmp_path),
+        base_environment=base,
+        launcher_root=str(tmp_path / "launcher"),
+        managed_hda_root=str(managed),
+        managed_hda_version="abc123",
+    )
+
+    assert base == before
+    assert environment["PATH"] == "system-path"
+    assert "PYTHONHOME" not in environment
+    assert "PYTHONUSERBASE" not in environment
+    assert "PYTHONSTARTUP" not in environment
+    assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(managed / "python")
+    assert environment["HOUDINI_OTLSCAN_PATH"].split(os.pathsep)[0] == str(
+        managed / "otls"
+    )
+    assert environment["HOUD2_HDA_ROOT"] == str(managed)
+    assert environment["HOUD2_HDA_VERSION"] == "abc123"

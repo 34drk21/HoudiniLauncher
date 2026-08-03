@@ -31,7 +31,8 @@ Included:
 - Layered environment variables and Houdini search paths
 - Project and task settings import/export with preview and backup
 - SQLite indexes, activity history, open history, and UI state
-- Task thumbnails from JPG or PNG images
+- Task thumbnails from JPG or PNG images, with a wide D2 brand fallback
+- Project/Task Show Archived and Restore controls with guarded permanent deletion
 - Selected-HIP cache reference scanning through `hython`
 - Full `geo_cache` inventory grouped by Cache and Version, with HIP usage colors
 - Cache search, filters, size sorting, and guarded permanent Version deletion
@@ -58,11 +59,25 @@ Launcher's Import tab.
 
 ## Houdini Cache HDAs
 
-Houdini launched through HouD2Launcher automatically receives the bundled HDA
-and Python search paths. Create `HouD2 Cache Out` after the geometry to publish:
+On first launch, HouD2Launcher scans all installed Houdini versions and selects
+the newest valid build by default. Its `hython.exe` then builds a Commercial
+Cache HDA specifically for that Houdini build. Other registered versions are
+built the first time they are selected for New/Open HIP. Create `HouD2 Cache
+Out` after the geometry to publish:
 
-The generated library is `houdini/otls/houd2_cache.hda` and must be rebuilt
-with a Commercial Houdini FX or Core license.
+Generated integrations are stored outside the application under:
+
+```text
+%LOCALAPPDATA%/HouD2Launcher/hda/<houdini-build>/<builder-fingerprint>/
+|-- otls/houd2_cache.hda
+|-- python/houd2_cache/
+`-- hda_build.json
+```
+
+The active build is added only to Houdini processes launched by HouD2Launcher.
+If a Commercial license is unavailable, the Launcher and Houdini continue
+without the HDA; retry from `Launcher Settings > Houdini Installations > Build
+/ Rebuild HDA`.
 
 ```text
 {geo_cache}/{cache_name}/v003/
@@ -82,9 +97,10 @@ Cache Out nodes are red until a Cache Version completes, then green. Cache In
 nodes are green when reading the latest available Version, yellow when reading
 an older Version, and red when unresolved or missing.
 
-### Building the HDA Library
+### Building the HDA Library Manually
 
-The `.hda` library must be authored by `hython` while it holds a Commercial
+Normal workstations use the automatic builder above. For development, the
+`.hda` library can also be authored manually by `hython` while it holds a Commercial
 Houdini FX or Core license. Having `houdinifx.exe` or `houdinicore.exe`
 installed is not itself proof that a Commercial license is available.
 
@@ -191,6 +207,12 @@ always included under `{task_name}_SDM2.0/houdini/`.
 
 ## Requirements
 
+- End-user installation: Windows 10 or later and SideFX Houdini
+- The Setup EXE includes its own Python runtime and modules
+- Commercial Houdini FX/Core license for automatic Cache HDA generation
+
+Source development requirements:
+
 - Windows 10 or later
 - Python 3.11 or later
 - PySide6
@@ -219,7 +241,16 @@ Launcher data is stored under `%LOCALAPPDATA%\HouD2Launcher` by default. Set
 
 ## First Run
 
-1. Open `Launcher Settings > Houdini Installations` and run `Auto Detect`.
+The first launch opens a workstation setup dialog before the main window and
+immediately scans the PC for installed Houdini versions. Finish remains disabled
+until the scan completes, and every detected version is saved to Launcher
+Settings so New/Open HIP is ready without another manual scan.
+Enter the user's display name and filename initials. Language, theme, default
+Project Root, private Update Channel, and detected Houdini installation can be
+set at the same time. These values are stored only for the current Windows user
+under `%LOCALAPPDATA%\HouD2Launcher`.
+
+1. Complete `HouD2Launcher First Run Setup`. Houdini detection starts automatically.
 2. Create a project or register an existing HouD2 project.
 3. Create a task. HouD2Launcher creates `{project_root}/{task}/houdini` and the
    configured auto-create folders.
@@ -233,8 +264,21 @@ Every Houdini launch includes `TASK_NAME`, `SHOT_FRAME_START`,
 by the Launcher.
 
 HDA integration also receives `HOUD2_GEO_ROOT`, `HOUD2_USER_ID`,
-`HOUD2_MACHINE_ID`, and the temporary localhost Catalog endpoint. The Catalog
+`HOUD2_MACHINE_ID`, `HOUD2_HDA_ROOT`, `HOUD2_HDA_VERSION`, and the temporary localhost Catalog endpoint. The Catalog
 token is process-only and is not shown in Overview or written to HIP/Manifest.
+
+## Python Isolation
+
+The Installer does not install Python or pip globally and does not modify the
+Windows `PATH`, system environment variables, or another application's module
+search path. PyInstaller runs the Launcher from its private bundled runtime.
+
+HouD2 search paths are passed through a copied environment dictionary only to
+the selected Houdini/hython child process. `PYTHONHOME`, `PYTHONUSERBASE`, and
+`PYTHONSTARTUP` are removed from that child environment to avoid binding
+Houdini to an unrelated Python installation. Existing Houdini `PATH` and
+`PYTHONPATH` remain available for pipeline compatibility. The HDA Builder is
+more strictly isolated with `PYTHONNOUSERSITE=1` and its own `PYTHONPATH`.
 
 ## Data Layout
 
@@ -267,8 +311,40 @@ index used for fast display and history; JSON wins if the two disagree.
 
 ## Windows Build
 
+End users install the generated Setup EXE and do not need Python, this source
+repository, or Inno Setup. Houdini remains a separate installation.
+
+For a release build, install Inno Setup 6 on the build PC and run:
+
 ```powershell
-.\scripts\build_windows.ps1
+.\scripts\build_release.ps1
 ```
 
-The build output is created under `dist\HouD2Launcher`.
+The application is created under `dist\HouD2Launcher`; the distributable
+installer is `dist\installer\HouD2Launcher-<version>-Setup.exe`. If
+`houdini\otls\houd2_cache.hda` exists and is non-empty it is included as a
+fallback. If it does not exist, the same command still includes the runtime HDA
+Builder so each workstation can generate its own compatible library.
+
+`build_windows.ps1` builds only the PyInstaller application and
+`build_installer.ps1` builds only the Inno Setup installer.
+
+## Private Updates
+
+HouD2Launcher updates from a normal shared folder; no public web server is
+required. Publish a tested Setup EXE from the build PC:
+
+```powershell
+.\scripts\publish_update.ps1 `
+  -ChannelPath "Z:\HouD2Launcher\updates" `
+  -InstallerPath ".\dist\installer\HouD2Launcher-0.3.0-Setup.exe" `
+  -Version "0.3.0" `
+  -ReleaseNotes "First installer release"
+```
+
+Set the same folder in `Launcher Settings > Updates > Update Channel` on each
+workstation. The Launcher checks once per day and also provides
+`Help > Check for Updates`. It validates file size and SHA-256, stages the
+installer locally, backs up `settings.json` and SQLite, then starts the normal
+in-place installer. Project/Task/HIP/cache data is outside the installation
+folder and is not removed by an application update or uninstall.

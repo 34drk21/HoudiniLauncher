@@ -255,6 +255,7 @@ class LauncherSettings(StrictModel):
     schema_version: Literal[1] = 1
     user_id: str = Field(default_factory=lambda: str(uuid4()))
     machine_id: str = Field(default_factory=lambda: str(uuid4()))
+    onboarding_completed: bool = False
     display_name: str = ""
     initials: str = ""
     remember_last_project: bool = True
@@ -276,11 +277,24 @@ class LauncherSettings(StrictModel):
     last_project_id: str | None = None
     last_task_id: str | None = None
     cache_exchange_paths: dict[str, str] = Field(default_factory=dict)
+    update_channel_path: Path | None = None
+    auto_check_updates: bool = True
+    last_update_check_at: datetime | None = None
 
     @field_validator("launcher_environment")
     @classmethod
     def validate_environment(cls, value: dict[str, str]) -> dict[str, str]:
         return {validate_environment_name(name): str(item) for name, item in value.items()}
+
+    @field_validator("default_project_root", "update_channel_path")
+    @classmethod
+    def validate_optional_absolute_path(cls, value: Path | None) -> Path | None:
+        if value is None:
+            return None
+        expanded = value.expanduser()
+        if not expanded.is_absolute():
+            raise ValueError("Launcher paths must be absolute")
+        return expanded
 
 
 class SettingsPackage(StrictModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,12 +18,13 @@ class HoudiniInstallationDetector:
 
     def scan(self, roots: list[Path] | None = None) -> list[HoudiniInstallation]:
         """Scan known installation roots and return unique valid builds."""
-        candidates = roots or [Path("C:/Program Files/Side Effects Software")]
+        candidates = roots or self.default_roots()
         found: dict[str, HoudiniInstallation] = {}
         for root in candidates:
             if not root.is_dir():
                 continue
-            for install_root in root.iterdir():
+            install_roots = [root, *root.iterdir()]
+            for install_root in install_roots:
                 if not install_root.is_dir():
                     continue
                 installation = self.from_install_root(install_root, source="auto")
@@ -30,6 +32,23 @@ class HoudiniInstallationDetector:
                     key = str(installation.houdini_executable.resolve()).casefold()
                     found[key] = installation
         return sorted(found.values(), key=lambda item: item.version_tuple, reverse=True)
+
+    @staticmethod
+    def default_roots() -> list[Path]:
+        """Return unique SideFX roots and an optional active HFS installation."""
+        values: list[Path] = []
+        hfs = os.getenv("HFS")
+        if hfs:
+            values.append(Path(hfs))
+        for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+            root = os.getenv(variable)
+            if root:
+                values.append(Path(root) / "Side Effects Software")
+        values.append(Path("C:/Program Files/Side Effects Software"))
+        unique: dict[str, Path] = {}
+        for value in values:
+            unique[str(value).casefold()] = value
+        return list(unique.values())
 
     def from_install_root(
         self, install_root: Path, source: str = "manual"
@@ -74,4 +93,3 @@ class HoudiniInstallationDetector:
     @staticmethod
     def _first_existing(*paths: Path) -> Path | None:
         return next((path for path in paths if path.is_file()), None)
-

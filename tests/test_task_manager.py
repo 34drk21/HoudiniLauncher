@@ -65,6 +65,25 @@ def test_rejects_invalid_task_name(project: ProjectSettings) -> None:
         TaskSettings(project_id=project.project_id, name="bad/task")
 
 
+def test_archive_and_restore_task_updates_canonical_status(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    ProjectManager(repository, resolver).create(project)
+    manager = TaskManager(repository, resolver)
+    task = manager.create(
+        project, TaskSettings(project_id=project.project_id, name="finished")
+    )
+
+    manager.archive(project, task)
+    assert task.status == "archived"
+    manager.restore(project, task)
+
+    loaded = manager.load(project, resolver.resolve_task_metadata_path(project, task))
+    assert loaded.status == "active"
+
+
 def test_delete_task_permanently_removes_folder_and_indexes(
     project: ProjectSettings,
     repository: LauncherRepository,

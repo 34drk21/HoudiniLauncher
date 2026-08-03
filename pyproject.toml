@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "houd2launcher"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first standalone project launcher for SideFX Houdini"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,7 +28,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-houd2launcher = ["resources/styles/*.qss", "admin/static/*.html"]
+houd2launcher = ["resources/styles/*.qss", "resources/icons/*", "admin/static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "houdini/python"]

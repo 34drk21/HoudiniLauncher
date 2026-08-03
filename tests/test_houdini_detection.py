@@ -41,3 +41,8 @@ def test_manual_registration_and_duplicate_prevention(tmp_path: Path) -> None:
         raise AssertionError("Duplicate executable should be rejected")
     assert len(settings.installations) == 1
 
+
+def test_scan_accepts_hfs_installation_root_itself(tmp_path: Path) -> None:
+    install_root = _fake_install(tmp_path, "21.0.700")
+    found = HoudiniInstallationDetector().scan([install_root])
+    assert [item.version_string for item in found] == ["21.0.700"]

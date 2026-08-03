@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from .core.config import atomic_write_model, launcher_home, load_model
+from . import __version__
+from .core.config import atomic_write_model, launcher_home, load_json_object
 from .core.cache_manager import CacheManager
 from .core.cache_exchange import CacheExchangeService
 from .core.cache_catalog import CacheCatalogService
@@ -20,11 +21,13 @@ from .core.project_manager import ProjectManager
 from .core.task_manager import TaskManager
 from .core.task_package import TaskPackageService
 from .core.sdm_package import SdmPackageService
+from .core.update_manager import UpdateService
 from .database.connection import Database
 from .database.migrations import migrate
 from .database.repositories import LauncherRepository
 from .houdini.launcher import HoudiniLauncher
 from .houdini.cache_scanner import HoudiniCacheScanner
+from .houdini.hda_manager import HdaManager
 from .api.catalog_server import CatalogApiServer
 
 
@@ -36,6 +39,7 @@ class ApplicationContext:
     data_home: Path
     settings_path: Path
     settings: LauncherSettings
+    _settings_ref: dict[str, LauncherSettings]
     database: Database
     repository: LauncherRepository
     resolver: PathResolver
@@ -46,6 +50,7 @@ class ApplicationContext:
     tasks: TaskManager
     hips: HipManager
     houdini: HoudiniLauncher
+    hdas: HdaManager
     caches: CacheManager
     cache_exchange: CacheExchangeService
     cache_scanner: HoudiniCacheScanner
@@ -53,6 +58,7 @@ class ApplicationContext:
     sdm_packages: SdmPackageService
     cache_catalog: CacheCatalogService
     catalog_api: CatalogApiServer
+    updates: UpdateService
 
     @classmethod
     def create(cls, root: Path) -> "ApplicationContext":
@@ -60,15 +66,7 @@ class ApplicationContext:
         data_home = launcher_home()
         data_home.mkdir(parents=True, exist_ok=True)
         settings_path = data_home / "settings.json"
-        if settings_path.is_file():
-            settings = load_model(settings_path, LauncherSettings)
-            # Persist additive defaults such as machine_id after older settings load.
-            atomic_write_model(settings_path, settings)
-        else:
-            username = getpass.getuser()
-            initials = "".join(part[:1] for part in username.split()).upper()[:4]
-            settings = LauncherSettings(display_name=username, initials=initials)
-            atomic_write_model(settings_path, settings)
+        settings = load_or_create_launcher_settings(settings_path)
         _configure_logging(data_home, settings)
         database = Database(data_home / "houd2launcher.db")
         migrate(database)
@@ -82,9 +80,11 @@ class ApplicationContext:
         folder_migrator = FolderStructureMigrator(resolver)
         filesystem = FilesystemReconciler(task_manager, hip_manager, resolver)
         cache_exchange = CacheExchangeService(resolver)
+        hda_manager = HdaManager(root, data_home)
+        settings_ref = {"settings": settings}
         catalog = CacheCatalogService(
             projects, task_manager, resolver, cache_exchange=cache_exchange,
-            exchange_paths=lambda: settings.cache_exchange_paths,
+            exchange_paths=lambda: settings_ref["settings"].cache_exchange_paths,
         )
         catalog_api = CatalogApiServer(catalog)
         catalog_api.start()
@@ -93,6 +93,7 @@ class ApplicationContext:
             data_home=data_home,
             settings_path=settings_path,
             settings=settings,
+            _settings_ref=settings_ref,
             database=database,
             repository=repository,
             resolver=resolver,
@@ -109,7 +110,9 @@ class ApplicationContext:
                 root,
                 api_url=catalog_api.url,
                 api_token=catalog_api.token,
+                hda_manager=hda_manager,
             ),
+            hdas=hda_manager,
             caches=cache_manager,
             cache_exchange=cache_exchange,
             cache_scanner=HoudiniCacheScanner(
@@ -118,15 +121,18 @@ class ApplicationContext:
                 root,
                 api_url=catalog_api.url,
                 api_token=catalog_api.token,
+                hda_manager=hda_manager,
             ),
             task_packages=TaskPackageService(resolver, task_manager),
             sdm_packages=SdmPackageService(resolver),
             cache_catalog=catalog,
             catalog_api=catalog_api,
+            updates=UpdateService(__version__),
         )
 
     def save_settings(self) -> Path:
         """Atomically persist launcher settings."""
+        self._settings_ref["settings"] = self.settings
         return atomic_write_model(self.settings_path, self.settings)
 
     def shutdown(self) -> None:
@@ -150,3 +156,22 @@ def _configure_logging(data_home: Path, settings: LauncherSettings) -> None:
     root_logger.setLevel(getattr(logging, settings.log_level))
     if not any(isinstance(item, RotatingFileHandler) for item in root_logger.handlers):
         root_logger.addHandler(handler)
+
+
+def load_or_create_launcher_settings(settings_path: Path) -> LauncherSettings:
+    """Load per-user settings and migrate pre-onboarding installations safely."""
+    if settings_path.is_file():
+        data = load_json_object(settings_path)
+        if "onboarding_completed" not in data:
+            data["onboarding_completed"] = bool(
+                str(data.get("display_name", "")).strip()
+                and str(data.get("initials", "")).strip()
+            )
+        settings = LauncherSettings.model_validate(data)
+    else:
+        username = getpass.getuser()
+        initials = "".join(part[:1] for part in username.split()).upper()[:4]
+        settings = LauncherSettings(display_name=username, initials=initials)
+    # Persist additive defaults such as machine_id after older settings load.
+    atomic_write_model(settings_path, settings)
+    return settings

@@ -360,7 +360,7 @@
           <div class="brand-mark">H2</div>
           <div>
             <h1>HouD2Launcher Handbook</h1>
-            <p>v0.2.0 · Local-first Houdini Project Launcher</p>
+            <p>v0.3.0 · Local-first Houdini Project Launcher</p>
           </div>
         </div>
         <div class="search-wrap">
@@ -380,7 +380,7 @@
   <div class="page-shell">
     <aside class="side-nav" id="side-nav" aria-label="このタブの目次"></aside>
     <main id="main-content">
-      <p class="print-note">HouD2Launcher Handbook v0.2.0 · 2026-08-02</p>
+      <p class="print-note">HouD2Launcher Handbook v0.3.0 · 2026-08-03</p>
 
       <article class="role-panel active" data-role="user" data-role-label="一般ユーザー">
         <header class="role-intro">
@@ -391,10 +391,10 @@
 
         <section class="doc-section" id="user-start" data-title="最初にやること" data-keywords="初回 起動 インストール auto detect launcher settings">
           <h2>最初にやること</h2>
-          <p class="lead">Launcherを起動したら、Houdini Installation、Project、Task、HIPの順に選択します。</p>
+          <p class="lead">Setup EXEでインストールし、初回セットアップ、Project、Task、HIPの順に進みます。</p>
           <ol class="step-list">
-            <li><strong>Launcherを起動</strong><span><code>start_houd2launcher.bat</code>をダブルクリックします。</span></li>
-            <li><strong>Houdiniを登録</strong><span><b>Launcher Settings → Houdini Installations → Auto Detect</b>を実行します。通常は初回だけです。</span></li>
+            <li><strong>Launcherを起動</strong><span>配布された<code>HouD2Launcher-*-Setup.exe</code>をインストールしてStart Menuから起動します。</span></li>
+            <li><strong>初回セットアップ</strong><span>Display Name、HIP名に使うInitials、Themeなどを入力します。Houdiniは自動検出されます。</span></li>
             <li><strong>Projectを選択</strong><span>左のProjectsから作業Projectを選びます。既存Projectは<b>Add Existing Project</b>で登録できます。</span></li>
             <li><strong>Taskを選択</strong><span>中央のTask一覧から作業対象を選択します。</span></li>
             <li><strong>HIPを開く</strong><span>右のHIPタブでVersionを選択し、OpenまたはOpen Read Onlyを実行します。</span></li>
@@ -406,13 +406,23 @@
           </div>
         </section>
 
+        <section class="doc-section" id="user-install-update" data-title="インストールと更新" data-keywords="installer setup exe update channel latest sha256 first run hda optional">
+          <h2>インストールと更新</h2>
+          <p>Installer版はPythonやソースコードを別途入れずに動作します。Houdiniは各PCへ通常どおり別途インストールしてください。初回画面がこのPCのHoudini VersionをすべてScanし、完了後に最新の有効Versionを既定選択します。ユーザー設定とDBは<code>%LOCALAPPDATA%\HouD2Launcher</code>に保存され、アプリ更新では削除されません。</p>
+          <h3>初回セットアップ</h3>
+          <p>最初の起動時だけ専用画面が開きます。Display NameとInitialsは必須です。Default Project Root、Update Channel、既定Houdiniは後から<b>Tools → Launcher Settings</b>でも変更できます。</p>
+          <h3>更新</h3>
+          <p><b>Launcher Settings → Updates</b>のUpdate Channelに管理者から指定された共有フォルダを設定します。起動後に1日1回確認され、手動確認は<b>Help → Check for Updates</b>です。更新前にInstallerのサイズとSHA-256を検証し、ローカル設定とSQLiteのBackupを作成します。</p>
+          <div class="callout"><strong>HDAはPCのHoudiniで自動生成</strong>初回は既定Houdini、別Versionは初めて選択した時に、そのVersionの<code>hython.exe</code>でCommercial <code>.hda</code>を生成します。License不足時もLauncherとHoudiniは利用でき、Houdini Installationsの<b>Build / Rebuild HDA</b>から再試行できます。</div>
+        </section>
+
         <section class="doc-section" id="user-layout" data-title="画面の見方" data-keywords="projects tasks overview hip caches settings history layout UI">
           <h2>画面の見方</h2>
           <div class="table-wrap"><table>
             <thead><tr><th>場所</th><th>役割</th><th>主な右クリック操作</th></tr></thead>
             <tbody>
-              <tr><td>左: Projects</td><td>Projectの切替と登録状態の管理</td><td>New Task、Project Settings、Import Task Package、Open in Explorer</td></tr>
-              <tr><td>中央: Tasks</td><td>Task検索、並べ替え、サムネイル表示</td><td>New HIP、Version関連、Task Package、Archive、完全削除</td></tr>
+              <tr><td>左: Projects</td><td>Projectの切替と登録状態の管理</td><td>New Task、Project Settings、Show Archived、Restore、完全削除</td></tr>
+              <tr><td>中央: Tasks</td><td>Task検索、並べ替え、サムネイル表示</td><td>New HIP、Task Package、Show Archived、Restore、完全削除</td></tr>
               <tr><td>右: Task Details</td><td>Overview、HIP、Caches、Settings、History</td><td>HIPを開く、Version Up、Cache確認・削除</td></tr>
             </tbody>
           </table></div>
@@ -494,6 +504,7 @@ D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
 
         <section class="doc-section" id="user-cache-hda" data-title="Cache Out / Cache In HDA" data-keywords="hda cache out cache in latest specific project task creator manifest marker catalog">
           <h2>Cache Out / Cache In HDA</h2>
+          <p>生成済みHDAと対応Pythonは<code>%LOCALAPPDATA%\HouD2Launcher\hda\{houdini-build}\{fingerprint}</code>へ保存され、Launcherから開いた対象Houdiniだけに読み込まれます。</p>
           <h3>Cache Outで保存</h3>
           <p>パラメータ画面は標準File Cacheに近い構成です。<b>Caching</b>、<b>Save Filters</b>、<b>Metadata</b>、<b>Advanced</b>に分かれ、内部のFile Cache SOPへ保存範囲、Simulation、属性・Group削除などを接続しています。</p>
           <ol class="step-list">
@@ -537,14 +548,17 @@ D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
 
         <section class="doc-section" id="user-lifecycle" data-title="Archiveと完全削除" data-keywords="archive delete permanently task remove danger restore">
           <h2>Archiveと完全削除</h2>
+          <p>Archived項目は通常の制作一覧から隠れます。ProjectsまたはTasks上部の<b>Show Archived</b>を有効にすると再表示され、右クリックの<b>Restore Project</b>または<b>Restore Task</b>でActiveへ戻せます。ファイルはArchive中も元の場所に残ります。</p>
           <div class="table-wrap"><table>
             <thead><tr><th>操作</th><th>起きること</th><th>戻せるか</th></tr></thead>
             <tbody>
-              <tr><td>Archive Task</td><td><code>task.json</code>のStatusを<code>archived</code>へ変更。ファイルは残る。</td><td>設定をActiveへ戻せる</td></tr>
+              <tr><td>Archive Project</td><td>このPCのLauncher一覧でProjectをArchived扱いにする。Projectフォルダは残る。</td><td>Restore Project</td></tr>
+              <tr><td>Archive Task</td><td><code>task.json</code>のStatusを<code>archived</code>へ変更。ファイルは残る。</td><td>Restore Task</td></tr>
               <tr><td>Delete Task Permanently...</td><td>Taskフォルダ内のHIP、Cache、設定、サムネイルをすべて完全削除。</td><td><b class="unused">戻せない</b></td></tr>
+              <tr><td>Delete Project Permanently...</td><td>Project Root内の全Task、HIP、Cache、設定とその他の全ファイルを完全削除。</td><td><b class="unused">戻せない</b></td></tr>
             </tbody>
           </table></div>
-          <div class="callout danger"><strong>完全削除はTask名の入力確認が必要</strong>重要なTaskは先にTask Packageや別バックアップを作ってください。</div>
+          <div class="callout danger"><strong>完全削除は名前の入力確認が必要</strong>Task削除はTask名、Project削除はProject名の完全一致を要求します。重要なデータは先にTask Packageや別バックアップを作ってください。</div>
         </section>
 
         <section class="doc-section" id="user-trouble" data-title="よくある問題" data-keywords="troubleshooting error missing external unused unique constraint cannot add project frame range v2 write">
@@ -691,7 +705,7 @@ geo/smoke/v2/smoke_v2.1001.bgeo.sc</div>
           </table></div>
           <p>Catalog APIはLauncher実行中だけ有効な<code>127.0.0.1</code>サービスです。URLと一時TokenはHoudini起動時の環境へ渡され、HDAがSQLiteを直接読むことはありません。別Project/TaskのプルダウンはCatalogを利用し、Current TaskはローカルManifestへFallbackします。</p>
           <div class="callout"><strong>Current Frame Cache</strong>Cache OutをCurrent Frameで保存したVersionはManifestへ保存ModeとFrameを記録します。Cache Inはタイムラインの現在Frameに関係なく、その保存Frameの1ファイルを固定して読み込みます。旧Manifestも単一ファイルとFrame情報から互換判定します。</div>
-          <div class="callout warning"><strong>HDA更新後の確認</strong><code>houd2_cache.hda</code>を再ビルドしたら、既に開いているHoudiniではDefinitionをReloadするかHoudiniを再起動します。変更済みの既存Parameter値は保持され、既定値は新規ノードへ適用されます。</div>
+          <div class="callout warning"><strong>HDA更新後の確認</strong>Launcher更新でBuilderが変わると新しいFingerprintへ自動Buildします。既に開いているHoudiniは以前の生成物を保持するため、次回Houdini起動から新版が使われます。</div>
         </section>
 
         <section class="doc-section" id="sup-operation" data-title="推奨運用チェックリスト" data-keywords="onboarding backup archive delete checklist operations">
@@ -709,6 +723,17 @@ geo/smoke/v2/smoke_v2.1001.bgeo.sc</div>
           <p><code>start_houd2_db_admin.bat</code>を実行すると、管理者向けの独立したlocalhost画面が開きます。</p>
           <ul class="checklist"><li>全Tableを検索・並べ替え・CSV/JSON Export</li><li>SQLite Online BackupとIntegrity Check</li><li>Project/Task JSONを正本にした索引修復</li><li>履歴削除とUI State Resetは自動Backup後に実行</li></ul>
           <div class="callout danger"><strong>Project/Taskの値はJSONが正本</strong>DB画面はRaw SQLや直接セル編集を提供しません。設定変更はLauncherのSettingsから行います。</div>
+        </section>
+
+        <section class="doc-section" id="sup-release" data-title="社内配布と更新管理" data-keywords="supervisor installer private update shared folder publish latest json sha256 rollout">
+          <h2>社内配布と更新管理</h2>
+          <p>初回は管理者が配布したSetup EXEを各PCで実行します。更新はWeb公開せず、全ユーザーが読める共有フォルダをUpdate Channelとして利用できます。書き込み権限はRelease担当者だけに制限してください。</p>
+          <ol class="step-list">
+            <li><strong>Releaseを検証</strong><span>代表PCで初回Houdini Scan、Commercial HDA自動Build、Project/HIP起動を確認します。</span></li>
+            <li><strong>共有フォルダへPublish</strong><span><code>publish_update.ps1</code>でInstallerと<code>latest.json</code>をAtomic配置します。</span></li>
+            <li><strong>段階展開</strong><span>少数PCで更新後、全ユーザーのUpdate Channelへ同じPathを設定します。</span></li>
+          </ol>
+          <div class="callout warning"><strong>Projectデータと生成HDAはInstallerから分離</strong>Project、Task、HIP、Cache、各PCで生成したHDAとユーザー設定はInstall先の外にあります。Launcher更新で削除されません。</div>
         </section>
       </article>
 
@@ -776,7 +801,7 @@ houdini/
             <div class="file-reference-body">
               <p class="file-purpose">通常Launcherの最小Entry Pointです。BATは<code>pythonw.exe</code>で前者を起動し、後者へ処理を渡します。</p>
               <ul class="function-list">
-                <li><code>app.main()</code><span>QApplication、Fusion Style、Theme、ApplicationContext、MainWindowを生成し、Qt Event Loopを開始します。</span></li>
+                <li><code>app.main()</code><span>QApplication、ApplicationContext、初回セットアップ、Theme、MainWindowを生成し、<code>--db-admin</code>時は独立管理画面へ切り替えます。</span></li>
               </ul>
             </div>
           </details>
@@ -799,6 +824,7 @@ houdini/
               <p class="file-purpose">ServiceとRepositoryを一度だけ組み立てるComposition Rootです。</p>
               <ul class="function-list">
                 <li><code>ApplicationContext.create(root)</code><span>設定、SQLite、PathResolver、各Manager、Cache Catalog/API、Houdini Adapterを生成して依存関係を接続します。</span></li>
+                <li><code>load_or_create_launcher_settings()</code><span>新規PCの入力候補を作り、旧Versionの設定は既存ユーザーを再Onboardingさせずに移行します。</span></li>
                 <li><code>save_settings()</code><span>Launcher SettingsをAtomic Writeで保存します。</span></li>
                 <li><code>shutdown()</code><span>localhost Catalog APIなど、Application所有のBackground Resourceを停止します。</span></li>
                 <li><code>_configure_logging()</code><span>Data Home配下のLog出力とLevelを設定します。</span></li>
@@ -823,8 +849,13 @@ houdini/
           </details>
 
           <details class="file-reference">
-            <summary><code>scripts/setup.ps1</code> / <code>scripts/build_windows.ps1</code></summary>
-            <div class="file-reference-body"><p class="file-purpose"><code>setup.ps1</code>はVirtual EnvironmentとDependencyを準備し、<code>build_windows.ps1</code>はPyInstallerによるWindows配布物を生成します。</p></div>
+            <summary><code>scripts/build_windows.ps1</code> / <code>build_installer.ps1</code> / <code>build_release.ps1</code></summary>
+            <div class="file-reference-body"><p class="file-purpose"><code>build_windows.ps1</code>はPyInstaller onedirアプリへHDA BuilderとPython sourceを常時同梱し、事前生成Commercial HDAは存在する場合だけFallbackとして追加します。<code>build_installer.ps1</code>はInno Setupでユーザー単位Installerを作り、<code>build_release.ps1</code>が両方を連続実行します。</p></div>
+          </details>
+
+          <details class="file-reference">
+            <summary><code>core/update_manager.py</code> / <code>scripts/publish_update.ps1</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>UpdateService.check()</code><span>共有フォルダのStrict Manifest、Version、Installer名、Sizeを検証します。</span></li><li><code>stage()</code><span>InstallerをローカルへProgress付きでCopyし、SHA-256一致後だけ正式名へ切り替えます。</span></li><li><code>backup_local_state()</code><span>更新直前のSettingsとSQLite Online BackupをVersion別Folderへ保存します。</span></li><li><code>publish_update.ps1</code><span>Release Installerと<code>latest.json</code>を一時名からAtomicに共有Channelへ公開します。</span></li></ul></div>
           </details>
         </section>
 
@@ -893,9 +924,10 @@ houdini/
               <p class="file-purpose">ProjectとTaskの作成、登録、変更、Archive、完全削除を管理します。</p>
               <ul class="function-list">
                 <li><code>ProjectManager.create() / add_existing()</code><span>新規Projectを初期化、または既存<code>project.json</code>をDBへ登録します。</span></li>
-                <li><code>ProjectManager.registered()</code><span>DBとCanonical JSONを照合し、同Rootの古いProject ID登録を安全に修復します。</span></li>
+                <li><code>ProjectManager.registered()</code><span>Archive表示条件に従ってDBとCanonical JSONを照合し、同Rootの古いProject ID登録を安全に修復します。</span></li>
+                <li><code>ProjectManager.delete_permanently()</code><span>Project Root、Canonical ID、Metadata位置、Link有無を再検証してProject全体を完全削除します。</span></li>
                 <li><code>TaskManager.create() / discover()</code><span>標準Folderを生成し、Project配下のTask JSONを発見・Index化します。</span></li>
-                <li><code>rename() / archive() / set_thumbnail()</code><span>Task名、Status、ThumbnailをCanonical DataとFilesystemへ反映します。</span></li>
+                <li><code>rename() / archive() / restore() / set_thumbnail()</code><span>Task名、Archive状態、ThumbnailをCanonical DataとFilesystemへ反映します。</span></li>
                 <li><code>delete_permanently()</code><span>Project直下、Project ID一致、非Linkを再検証してTask全体を完全削除します。</span></li>
               </ul>
             </div>
@@ -1040,6 +1072,10 @@ houdini/
 
         <section class="doc-section" id="dev-hda-reference" data-title="Cache HDA Pythonリファレンス" data-keywords="hda python cache out cache in context paths manifest api client build commercial marker function">
           <h2>Cache HDA Pythonリファレンス</h2>
+          <details class="file-reference" open>
+            <summary><code>src/houd2launcher/houdini/hda_manager.py</code></summary>
+            <div class="file-reference-body"><ul class="function-list"><li><code>status() / integration()</code><span>Houdini Build別のActive Manifest、HDA checksum、対応Python packageを検証します。</span></li><li><code>should_auto_build()</code><span>Missing/Staleを一度だけ自動生成対象にし、同じBuilderで失敗済みなら再試行Loopを止めます。</span></li><li><code>build()</code><span>隔離hythonで一時Bundleを生成し、Commercial定義とChecksum確認後にActive PointerをAtomic更新します。</span></li></ul></div>
+          </details>
           <p class="lead"><code>houdini/python/houd2_cache</code>はLauncher DBを読まず、Environment、localhost API、HIP位置、Manual Parameterだけを使う独立Packageです。</p>
 
           <details class="file-reference" open>
@@ -1164,7 +1200,7 @@ houdini/
 
           <details class="file-reference">
             <summary><code>ui/panels/project_panel.py</code> / <code>task_panel.py</code></summary>
-            <div class="file-reference-body"><ul class="function-list"><li><code>set_projects() / current_project()</code><span>Project Card一覧、Favorite/Archive表示、現在選択を管理します。</span></li><li><code>set_tasks() / current_task() / set_view_mode()</code><span>Task検索、Sort、List/Grid、Thumbnail Size、現在選択を管理します。</span></li><li><code>_show_context_menu() / _context_menu()</code><span>対象Project/Taskに対応する右クリックCommandをSignalとして通知します。</span></li></ul></div>
+            <div class="file-reference-body"><ul class="function-list"><li><code>set_projects() / current_project()</code><span>Project Card一覧、Favorite、Show Archived、現在選択を管理します。</span></li><li><code>set_tasks() / current_task() / set_view_mode()</code><span>Task検索、Sort、Show Archived、List/Grid、D2初期Thumbnail、現在選択を管理します。</span></li><li><code>_show_context_menu() / _context_menu()</code><span>対象状態に応じてArchiveまたはRestoreと完全削除CommandをSignalとして通知します。</span></li></ul></div>
           </details>
 
           <details class="file-reference">
@@ -1292,10 +1328,13 @@ houdini/
 hython houdini\scripts\build_cache_hdas.py
 hython houdini\scripts\test_cache_hdas.py
 
-# Windows distribution
-.\scripts\build_windows.ps1</code></pre>
-          <p>テストはProject/Task/HIP lifecycle、Path containment、Houdini compatibility/creation/open、Environment resolution、Cache Catalog/HDA、DB Admin、Settings import/export、Task Package security、UI basicsをカバーします。</p>
-          <div class="callout success"><strong>現在の基準</strong>通常Pythonテスト73件に加え、Houdini 22 HythonでCache Out→Catalog→Cache In、Marker/Manifest、日本語・Space Path、保存HIP再読込後のUsed参照を検証します。</div>
+# Windows application + Installer (HDA is optional)
+.\scripts\build_release.ps1
+
+# Publish a private shared-folder update
+.\scripts\publish_update.ps1 -ChannelPath Z:\HouD2Launcher\updates -InstallerPath .\dist\installer\HouD2Launcher-0.3.0-Setup.exe -Version 0.3.0</code></pre>
+          <p>テストはProject/Task/HIP lifecycle、Path containment、Houdini compatibility/creation/open、初回Version Scan、PC別HDA Build、Python subprocess隔離、Environment resolution、Cache Catalog、DB Admin、Settings import/export、Task Package security、Updater、UI basicsをカバーします。</p>
+          <div class="callout success"><strong>現在の基準</strong>通常Pythonテスト125件に加え、Houdini 22 HythonでCache Out→Catalog→Cache In、Marker/Manifest、日本語・Space Path、保存HIP再読込後のUsed参照を検証します。</div>
         </section>
 
         <section class="doc-section" id="dev-boundaries" data-title="Current Boundaries and Future Work" data-keywords="not implemented future ftp sync hda load cache render farm prism">
@@ -1309,7 +1348,7 @@ hython houdini\scripts\test_cache_hdas.py
         </section>
       </article>
 
-      <footer class="footer">HouD2Launcher Handbook · v0.2.0 implementation snapshot including Cache HDA · Last updated 2026-08-02</footer>
+      <footer class="footer">HouD2Launcher Handbook · v0.3.0 installer and private update snapshot · Last updated 2026-08-03</footer>
     </main>
   </div>
 

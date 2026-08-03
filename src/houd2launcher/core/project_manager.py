@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .config import atomic_write_model, load_model
-from .exceptions import DuplicateRegistrationError
+from .exceptions import DuplicateRegistrationError, PathSafetyError
 from .models import ProjectSettings, utc_now
 from .path_resolver import PathResolver
 from ..database.repositories import LauncherRepository
@@ -74,10 +75,43 @@ class ProjectManager:
         """Remove only the launcher registration, preserving all project files."""
         self.repository.remove_project(project_id)
 
-    def registered(self) -> list[ProjectSettings]:
+    def delete_permanently(self, project: ProjectSettings) -> Path:
+        """Permanently delete a validated Project root and its local indexes."""
+        root = self.resolver.resolve_project_root(project)
+        resolved = root.resolve()
+        if resolved == Path(resolved.anchor) or resolved.parent == resolved:
+            raise PathSafetyError(f"Refusing to delete a filesystem root: {root}")
+        is_junction = getattr(root, "is_junction", lambda: False)
+        if root.is_symlink() or is_junction():
+            raise PathSafetyError(f"Linked Project roots cannot be deleted: {root}")
+        if not root.is_dir():
+            raise FileNotFoundError(f"Project folder is missing: {root}")
+        config = self.resolver.resolve_project_metadata_path(project)
+        expected_config = resolved / ".houd2" / "project.json"
+        if config.resolve() != expected_config:
+            raise PathSafetyError(f"Project metadata escaped the Project root: {config}")
+        if not config.is_file():
+            raise FileNotFoundError(f"Project metadata is missing: {config}")
+        canonical = load_model(config, ProjectSettings)
+        if (
+            canonical.project_id != project.project_id
+            or canonical.project_root.resolve() != resolved
+        ):
+            raise ValueError("Project metadata does not match the selected Project")
+
+        shutil.rmtree(root)
+        self.repository.remove_project(project.project_id)
+        self.repository.record_activity(
+            project.project_id,
+            "project_deleted_permanently",
+            {"name": project.name, "path": str(root)},
+        )
+        return root
+
+    def registered(self, include_archived: bool = False) -> list[ProjectSettings]:
         """Return valid registered projects, treating JSON as authoritative."""
         projects: list[ProjectSettings] = []
-        for record in self.repository.list_projects():
+        for record in self.repository.list_projects(include_archived=include_archived):
             config_path = Path(record["config_path"])
             if not config_path.is_file():
                 continue

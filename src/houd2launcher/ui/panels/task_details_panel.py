@@ -660,7 +660,7 @@ class TaskDetailsPanel(QWidget):
 
     @staticmethod
     def _color_cache_item(item: QTreeWidgetItem, is_used: bool) -> None:
-        color = QColor("#78cf8e" if is_used else "#e27676")
+        color = QColor("#73b589" if is_used else "#c96f70")
         for column in range(item.columnCount()):
             item.setForeground(column, color)
             item.setToolTip(column, item.text(column))

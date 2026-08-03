@@ -16,6 +16,7 @@ from ..core.models import (
     TaskSettings,
 )
 from .process_options import hidden_console_options
+from .hda_manager import HdaManager
 
 
 class HoudiniCacheScanner:
@@ -29,6 +30,7 @@ class HoudiniCacheScanner:
         run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
         api_url: str = "",
         api_token: str = "",
+        hda_manager: HdaManager | None = None,
     ) -> None:
         self.environment_resolver = environment_resolver
         self.cache_manager = cache_manager
@@ -36,6 +38,7 @@ class HoudiniCacheScanner:
         self._run = run
         self.api_url = api_url
         self.api_token = api_token
+        self.hda_manager = hda_manager
 
     def scan(
         self,
@@ -54,6 +57,9 @@ class HoudiniCacheScanner:
                 f"hython.exe is missing: {installation.hython_executable or 'not registered'}"
             )
         script = Path(__file__).with_name("cache_probe.py")
+        integration = (
+            self.hda_manager.integration(installation) if self.hda_manager else None
+        )
         environment = self.environment_resolver.build(
             project,
             task,
@@ -66,6 +72,10 @@ class HoudiniCacheScanner:
             machine_id=launcher_settings.machine_id,
             api_url=self.api_url,
             api_token=self.api_token,
+            managed_hda_root=str(integration.root) if integration else "",
+            managed_hda_version=(
+                integration.builder_fingerprint if integration else ""
+            ),
         )
         try:
             completed = self._run(

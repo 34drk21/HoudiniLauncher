@@ -3,7 +3,7 @@ from __future__ import annotations
 from .connection import Database
 
 
-SCHEMA = """
+SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS projects (
     project_id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -67,9 +67,20 @@ CREATE INDEX IF NOT EXISTS idx_hips_task_version ON hips(task_id, version DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_task ON activity_history(task_id, created_at DESC);
 """
 
+MIGRATIONS = ((1, SCHEMA_V1),)
+
 
 def migrate(database: Database) -> None:
-    """Create or upgrade the local SQLite index schema."""
+    """Apply ordered, transactional SQLite migrations."""
     with database.connect() as connection:
-        connection.executescript(SCHEMA)
-
+        current = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        latest = MIGRATIONS[-1][0]
+        if current > latest:
+            raise RuntimeError(
+                f"Database schema {current} is newer than supported schema {latest}"
+            )
+        for version, script in MIGRATIONS:
+            if version <= current:
+                continue
+            connection.executescript(script)
+            connection.execute(f"PRAGMA user_version = {version}")

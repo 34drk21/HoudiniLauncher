@@ -29,3 +29,9 @@ class Database:
         finally:
             connection.close()
 
+    def backup(self, destination: Path) -> Path:
+        """Create a consistent SQLite backup while the Launcher is running."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(self.path) as source, sqlite3.connect(destination) as target:
+            source.backup(target)
+        return destination

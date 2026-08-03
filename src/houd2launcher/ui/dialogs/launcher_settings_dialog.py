@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from ...core.models import HoudiniInstallation, LauncherSettings
 from ...houdini.installation_detector import HoudiniInstallationDetector
 from ...houdini.installation_manager import HoudiniInstallationManager
+from ...houdini.hda_manager import HdaStatus
 from .project_task_dialogs import KeyValueTable
 from ..widgets import add_helped_row
 
@@ -162,6 +163,8 @@ class LauncherSettingsDialog(QDialog):
         settings: LauncherSettings,
         parent: QWidget | None = None,
         hip_validator: Callable[[HoudiniInstallation], object] | None = None,
+        hda_status: Callable[[HoudiniInstallation], HdaStatus] | None = None,
+        hda_builder: Callable[[HoudiniInstallation], object] | None = None,
     ) -> None:
         super().__init__(parent)
         self.original = settings
@@ -169,7 +172,10 @@ class LauncherSettingsDialog(QDialog):
         self._result: LauncherSettings | None = None
         self.scan_thread: InstallationScanThread | None = None
         self.validation_thread: InstallationValidationThread | None = None
+        self.hda_thread: InstallationValidationThread | None = None
         self.hip_validator = hip_validator
+        self.hda_status = hda_status
+        self.hda_builder = hda_builder
         self.setWindowTitle("Launcher Settings")
         self.resize(840, 620)
         layout = QVBoxLayout(self)
@@ -197,6 +203,21 @@ class LauncherSettingsDialog(QDialog):
         add_helped_row(general_form, "Open dialog", self.show_open, "HIPを開く前にHoudiniバージョンとモードを確認します。")
         add_helped_row(general_form, "Auto refresh", self.auto_refresh, "作成・保存後に一覧を自動更新します。")
         add_helped_row(general_form, "Language", self.language, "Launcherの表示言語です。現在は一部の説明のみ日本語です。")
+        self.default_project_root = QLineEdit(
+            str(settings.default_project_root) if settings.default_project_root else ""
+        )
+        project_root_button = QPushButton("Browse")
+        project_root_button.clicked.connect(
+            lambda: self._browse_directory(
+                self.default_project_root, "Default Project Root"
+            )
+        )
+        add_helped_row(
+            general_form,
+            "Default Project Root",
+            self._directory_row(self.default_project_root, project_root_button),
+            "New Projectで最初に表示する保存先です。",
+        )
         tabs.addTab(general, "General")
         user = QWidget()
         user_form = QFormLayout(user)
@@ -224,19 +245,23 @@ class LauncherSettingsDialog(QDialog):
         self.validate_button = QPushButton("Test HIP Creation")
         self.validate_button.clicked.connect(self._validate_selected)
         self.validate_button.setEnabled(self.hip_validator is not None)
+        self.hda_button = QPushButton("Build / Rebuild HDA")
+        self.hda_button.clicked.connect(self._build_selected_hda)
+        self.hda_button.setEnabled(self.hda_builder is not None)
         controls.addWidget(self.detect_button)
         controls.addWidget(add)
         controls.addWidget(remove)
         controls.addWidget(self.validate_button)
+        controls.addWidget(self.hda_button)
         controls.addStretch()
         installation_layout.addLayout(controls)
-        help_label = QLabel("登録したHoudiniを選択してTest HIP Creationを実行すると、ライセンス判定と一時HIP保存を確認できます。")
+        help_label = QLabel("登録したHoudiniを選択してHIP作成とCommercial Cache HDAを確認できます。HDAはVersionごとにPCローカルへ生成されます。")
         help_label.setObjectName("FieldHelp")
         help_label.setWordWrap(True)
         installation_layout.addWidget(help_label)
-        self.installation_table = QTableWidget(0, 8)
+        self.installation_table = QTableWidget(0, 9)
         self.installation_table.setHorizontalHeaderLabels(
-            ["Enabled", "Display Name", "Version", "Build", "License", "Install Path", "Status", "Source"]
+            ["Enabled", "Display Name", "Version", "Build", "License", "Install Path", "Status", "HDA", "Source"]
         )
         self.installation_table.setWordWrap(False)
         self.installation_table.verticalHeader().setVisible(False)
@@ -263,6 +288,32 @@ class LauncherSettingsDialog(QDialog):
         add_helped_row(ui_form, "Thumbnail size", self.thumbnail_size, "Taskカードの画像幅です。例: 220px")
         add_helped_row(ui_form, "Task view mode", self.view_mode, "cards、compact、detailedから一覧密度を選びます。")
         tabs.addTab(ui, "UI")
+        updates = QWidget()
+        updates_form = QFormLayout(updates)
+        self.update_channel_path = QLineEdit(
+            str(settings.update_channel_path) if settings.update_channel_path else ""
+        )
+        update_button = QPushButton("Browse")
+        update_button.clicked.connect(
+            lambda: self._browse_directory(
+                self.update_channel_path, "Update Channel"
+            )
+        )
+        self.auto_check_updates = QCheckBox()
+        self.auto_check_updates.setChecked(settings.auto_check_updates)
+        add_helped_row(
+            updates_form,
+            "Update Channel",
+            self._directory_row(self.update_channel_path, update_button),
+            "latest.jsonとInstallerを置く共有フォルダです。",
+        )
+        add_helped_row(
+            updates_form,
+            "Automatic check",
+            self.auto_check_updates,
+            "起動後に1日1回、新しいVersionを確認します。",
+        )
+        tabs.addTab(updates, "Updates")
         self._refresh_installations()
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
@@ -290,11 +341,22 @@ class LauncherSettingsDialog(QDialog):
                 "show_open_dialog": self.show_open.isChecked(),
                 "auto_refresh": self.auto_refresh.isChecked(),
                 "language": self.language.currentData(),
+                "default_project_root": (
+                    Path(self.default_project_root.text().strip())
+                    if self.default_project_root.text().strip()
+                    else None
+                ),
                 "launcher_environment": self.environment_editor.values(),
                 "default_installation_id": self.default_installation.currentData(),
                 "theme": self.theme.currentText(),
                 "thumbnail_size": self.thumbnail_size.value(),
                 "task_view_mode": self.view_mode.currentText(),
+                "update_channel_path": (
+                    Path(self.update_channel_path.text().strip())
+                    if self.update_channel_path.text().strip()
+                    else None
+                ),
+                "auto_check_updates": self.auto_check_updates.isChecked(),
             }
         )
         try:
@@ -303,6 +365,20 @@ class LauncherSettingsDialog(QDialog):
             QMessageBox.warning(self, "Invalid launcher settings", str(exc))
             return
         super().accept()
+
+    @staticmethod
+    def _directory_row(edit: QLineEdit, button: QPushButton) -> QWidget:
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(edit, 1)
+        layout.addWidget(button)
+        return widget
+
+    def _browse_directory(self, target: QLineEdit, title: str) -> None:
+        path = QFileDialog.getExistingDirectory(self, title, target.text())
+        if path:
+            target.setText(path)
 
     def _detect(self) -> None:
         if self.scan_thread and self.scan_thread.isRunning():
@@ -380,6 +456,45 @@ class LauncherSettingsDialog(QDialog):
             f"HIP作成に成功しました。\nHoudini: {version}\nLicense: {license_type}\nFormat: .{extension}",
         )
 
+    def _build_selected_hda(self) -> None:
+        row = self.installation_table.currentRow()
+        if row < 0 or row >= len(self.working.installations) or not self.hda_builder:
+            QMessageBox.information(self, "Cache HDA Build", "Houdiniを選択してください。")
+            return
+        if self.hda_thread and self.hda_thread.isRunning():
+            return
+        installation = self.working.installations[row]
+        self.hda_button.setEnabled(False)
+        self.hda_button.setText("Building HDA...")
+        self.hda_thread = InstallationValidationThread(
+            lambda: self.hda_builder(installation), self
+        )
+        self.hda_thread.completed.connect(
+            lambda _: self._hda_build_completed(installation)
+        )
+        self.hda_thread.failed.connect(self._hda_build_failed)
+        self.hda_thread.finished.connect(lambda: self.hda_button.setEnabled(True))
+        self.hda_thread.finished.connect(
+            lambda: self.hda_button.setText("Build / Rebuild HDA")
+        )
+        self.hda_thread.start()
+
+    def _hda_build_completed(self, installation: HoudiniInstallation) -> None:
+        self._refresh_installations()
+        QMessageBox.information(
+            self,
+            "Cache HDA Ready",
+            f"{installation.display_name}用のCache In / Cache Out HDAを生成しました。",
+        )
+
+    def _hda_build_failed(self, message: str) -> None:
+        self._refresh_installations()
+        QMessageBox.warning(
+            self,
+            "Cache HDA Build Failed",
+            message + "\n\nLauncherとHoudiniはHDAなしでも引き続き使用できます。",
+        )
+
     def _sync_enabled(self) -> None:
         for row, installation in enumerate(self.working.installations):
             item = self.installation_table.item(row, 0)
@@ -401,6 +516,11 @@ class LauncherSettingsDialog(QDialog):
                 installation.license_type,
                 str(installation.install_root),
                 "Available" if installation.is_valid else "Missing",
+                (
+                    self.hda_status(installation).label
+                    if self.hda_status
+                    else "Unknown"
+                ),
                 installation.source,
             )
             for column, value in enumerate(values, start=1):

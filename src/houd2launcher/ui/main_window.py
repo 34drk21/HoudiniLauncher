@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..application import ApplicationContext
+from .. import __version__
 from ..core.config import atomic_write_model, backup_file
 from ..core.folder_migration import FolderMigrationPlan
 from ..core.hip_manager import HipRecord
 from ..core.models import HoudiniInstallation, ProjectSettings, TaskSettings
+from ..core.update_manager import AvailableUpdate
 from ..houdini.editions import available_houdini_editions
 from ..houdini.installation_manager import HoudiniInstallationManager
 from ..houdini.open_policy import should_show_open_dialog
@@ -114,6 +117,10 @@ class MainWindow(QMainWindow):
         self.current_task: TaskSettings | None = None
         self._threads: set[QThread] = set()
         self._progress_thread: ProgressOperationThread | None = None
+        self._update_check_running = False
+        self._hda_builds: set[str] = set()
+        self._hda_waiters: dict[str, list[Callable[[], None]]] = {}
+        self._hda_warnings: set[str] = set()
         self._ignored_task_candidates: set[tuple[str, str]] = set()
         self._suppress_adoption_prompts = True
         self._filesystem_watcher = QFileSystemWatcher(self)
@@ -156,6 +163,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
         self.refresh_projects()
         self._suppress_adoption_prompts = False
+        QTimer.singleShot(2500, self._maybe_check_updates)
+        QTimer.singleShot(800, self._prepare_default_hda)
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -175,6 +184,9 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Import Task Settings", self.import_task_settings)
         tools_menu.addAction("Open Logs", self.open_logs)
         help_menu = self.menuBar().addMenu("Help")
+        help_menu.addAction("Open Handbook", self.open_handbook)
+        help_menu.addAction("Check for Updates", lambda: self.check_for_updates(True))
+        help_menu.addSeparator()
         help_menu.addAction("About", self.about)
 
     def _connect_signals(self) -> None:
@@ -191,6 +203,11 @@ class MainWindow(QMainWindow):
         self.project_panel.import_requested.connect(self._import_project_from_context)
         self.project_panel.duplicate_requested.connect(self.duplicate_project_configuration)
         self.project_panel.archive_requested.connect(self.archive_project)
+        self.project_panel.restore_requested.connect(self.restore_project)
+        self.project_panel.delete_requested.connect(self.delete_project_permanently)
+        self.project_panel.archived_visibility_changed.connect(
+            lambda _checked: self.refresh_projects()
+        )
         self.project_panel.favorite_requested.connect(self.set_project_favorite)
         self.project_panel.package_import_requested.connect(self.import_task_package)
         self.task_panel.task_selected.connect(self._select_task)
@@ -204,6 +221,10 @@ class MainWindow(QMainWindow):
         self.task_panel.rename_requested.connect(self.rename_task)
         self.task_panel.duplicate_requested.connect(self.duplicate_task)
         self.task_panel.archive_requested.connect(self.archive_task)
+        self.task_panel.restore_requested.connect(self.restore_task)
+        self.task_panel.archived_visibility_changed.connect(
+            self._task_archived_visibility_changed
+        )
         self.task_panel.export_requested.connect(self._export_task_from_context)
         self.task_panel.import_requested.connect(self._import_task_from_context)
         self.task_panel.package_export_requested.connect(self.export_task_package)
@@ -229,14 +250,17 @@ class MainWindow(QMainWindow):
     def refresh_projects(self) -> None:
         """Reload registered projects from canonical JSON files."""
         selected = self.current_project.project_id if self.current_project else None
+        include_archived = self.project_panel.show_archived.isChecked()
         try:
-            projects = self.context.projects.registered()
+            projects = self.context.projects.registered(include_archived=include_archived)
         except Exception as exc:
             self._error("Cannot load projects", exc)
             projects = []
         project_records = {
             str(record["project_id"]): record
-            for record in self.context.repository.list_projects(include_archived=False)
+            for record in self.context.repository.list_projects(
+                include_archived=include_archived
+            )
         }
         self.project_panel.set_projects(
             projects,
@@ -250,6 +274,8 @@ class MainWindow(QMainWindow):
         if not projects:
             self.current_project = None
             self.current_task = None
+            self.task_panel.clear_tasks()
+            self.details_panel.clear_task()
             self.statusBar().showMessage("No project registered")
 
     def refresh_current(self) -> None:
@@ -362,6 +388,9 @@ class MainWindow(QMainWindow):
                 if installations
                 else None
             )
+            integration = (
+                self.context.hdas.integration(installation) if installation else None
+            )
             expression_environment = self.context.environment.expression_environment(
                 self.current_project,
                 task,
@@ -373,6 +402,12 @@ class MainWindow(QMainWindow):
                 user_id=self.context.settings.user_id,
                 machine_id=self.context.settings.machine_id,
                 api_url=self.context.catalog_api.url,
+                managed_hda_root=(
+                    str(integration.root) if integration else ""
+                ),
+                managed_hda_version=(
+                    integration.builder_fingerprint if integration else ""
+                ),
             )
             self.details_panel.set_task(
                 self.current_project,
@@ -439,7 +474,63 @@ class MainWindow(QMainWindow):
         self.context.repository.set_project_archived(project.project_id, True)
         self.current_project = None
         self.current_task = None
+        self.details_panel.clear_task()
         self.refresh_projects()
+
+    def restore_project(self, project: ProjectSettings) -> None:
+        self.context.repository.set_project_archived(project.project_id, False)
+        self.current_project = project
+        self.refresh_projects()
+        self.statusBar().showMessage(f"Project restored: {project.name}", 6000)
+
+    def delete_project_permanently(self, project: ProjectSettings) -> None:
+        answer = QMessageBox.warning(
+            self,
+            "Delete Project Permanently",
+            f"Permanently delete {project.name}?\n\n"
+            "Every Task, HIP, cache, setting, thumbnail, and other file inside "
+            "this Project will be deleted. This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        confirmation, accepted = QInputDialog.getText(
+            self,
+            "Confirm Permanent Project Deletion",
+            f'Type the Project name "{project.name}" to confirm:',
+        )
+        if not accepted:
+            return
+        if confirmation != project.name:
+            QMessageBox.warning(
+                self,
+                "Project Not Deleted",
+                "The entered Project name did not match.",
+            )
+            return
+        self._run_operation(
+            f"Deleting Project {project.name} permanently...",
+            lambda: self.context.projects.delete_permanently(project),
+            lambda _: self._project_deleted(project),
+        )
+
+    def _project_deleted(self, project: ProjectSettings) -> None:
+        if self.current_project and self.current_project.project_id == project.project_id:
+            self.current_project = None
+            self.current_task = None
+            self.details_panel.clear_task()
+        if self.context.settings.last_project_id == project.project_id:
+            self.context.settings.last_project_id = None
+            self.context.settings.last_task_id = None
+            self.context.save_settings()
+        watched = self._filesystem_watcher.directories()
+        if watched:
+            self._filesystem_watcher.removePaths(watched)
+        self.refresh_projects()
+        self.statusBar().showMessage(
+            f"Project deleted permanently: {project.name}", 8000
+        )
 
     def duplicate_project_configuration(self, project: ProjectSettings) -> None:
         dialog = NewProjectDialog(project.project_root.parent, self)
@@ -551,6 +642,8 @@ class MainWindow(QMainWindow):
             self.context.settings,
             self,
             hip_validator=self.context.houdini.validate_hip_creation,
+            hda_status=self.context.hdas.status,
+            hda_builder=self.context.hdas.build,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -586,17 +679,21 @@ class MainWindow(QMainWindow):
             return
         installation = dialog.installation.currentData()
         project, task = self.current_project, self.current_task
-        self._run_operation(
-            "Creating HIP...",
-            lambda: self.context.houdini.create_blank_hip(
-                project,
-                task,
-                installation,
-                self.context.settings,
-                self._user_name(),
-                dialog.comment.text().strip(),
+        comment = dialog.comment.text().strip()
+        self._ensure_hda_then(
+            installation,
+            lambda: self._run_operation(
+                "Creating HIP...",
+                lambda: self.context.houdini.create_blank_hip(
+                    project,
+                    task,
+                    installation,
+                    self.context.settings,
+                    self._user_name(),
+                    comment,
+                ),
+                lambda _: self._hip_created(installation),
             ),
-            lambda _: self._hip_created(installation),
         )
 
     def _new_hip_preview(
@@ -698,8 +795,17 @@ class MainWindow(QMainWindow):
         installation: HoudiniInstallation,
         read_only: bool,
         edition: str | None = None,
+        ensure_hda: bool = True,
     ) -> None:
         if not self.current_project or not self.current_task:
+            return
+        if ensure_hda:
+            self._ensure_hda_then(
+                installation,
+                lambda: self._launch_hip(
+                    hip, installation, read_only, edition, ensure_hda=False
+                ),
+            )
             return
         try:
             self.context.houdini.open_hip(
@@ -718,6 +824,81 @@ class MainWindow(QMainWindow):
             self._select_task(self.current_task)
         except Exception as exc:
             self._error("Cannot open HIP", exc)
+
+    def _prepare_default_hda(self) -> None:
+        installations = self._installations()
+        if not installations:
+            return
+        installation = HoudiniInstallationManager.select_preferred(
+            self.context.settings,
+            [self.context.settings.default_installation_id],
+        )
+        if installation and self.context.hdas.should_auto_build(installation):
+            self._start_hda_build(installation)
+
+    def _ensure_hda_then(
+        self, installation: HoudiniInstallation, continuation: Callable[[], None]
+    ) -> None:
+        status = self.context.hdas.status(installation)
+        if status.state == "ready":
+            continuation()
+            return
+        if self.context.hdas.should_auto_build(installation):
+            self._start_hda_build(installation, continuation)
+            return
+        if status.integration is None:
+            self._warn_hda_unavailable(installation, status.message or status.label)
+        continuation()
+
+    def _start_hda_build(
+        self,
+        installation: HoudiniInstallation,
+        continuation: Callable[[], None] | None = None,
+    ) -> None:
+        key = installation.installation_id
+        if continuation:
+            self._hda_waiters.setdefault(key, []).append(continuation)
+        if key in self._hda_builds:
+            return
+        self._hda_builds.add(key)
+        self._run_operation(
+            f"Building Cache HDA for {installation.display_name}...",
+            lambda: self.context.hdas.build(installation),
+            lambda _: self._hda_build_finished(installation),
+            failed=lambda error: self._hda_build_failed(installation, error),
+        )
+
+    def _hda_build_finished(self, installation: HoudiniInstallation) -> None:
+        key = installation.installation_id
+        self._hda_builds.discard(key)
+        self.statusBar().showMessage(
+            f"Cache HDA ready for {installation.display_name}", 6000
+        )
+        for continuation in self._hda_waiters.pop(key, []):
+            continuation()
+
+    def _hda_build_failed(
+        self, installation: HoudiniInstallation, error: str
+    ) -> None:
+        key = installation.installation_id
+        self._hda_builds.discard(key)
+        self._warn_hda_unavailable(installation, error)
+        for continuation in self._hda_waiters.pop(key, []):
+            continuation()
+
+    def _warn_hda_unavailable(
+        self, installation: HoudiniInstallation, message: str
+    ) -> None:
+        key = installation.installation_id
+        if key in self._hda_warnings:
+            return
+        self._hda_warnings.add(key)
+        QMessageBox.warning(
+            self,
+            "Cache HDA is Not Available",
+            f"{installation.display_name}用のCommercial HDAを準備できませんでした。\n\n"
+            f"{message}\n\nHoudiniはHDAなしで開きます。Launcher Settingsから再試行できます。",
+        )
 
     def _task_activated(self, task: TaskSettings) -> None:
         if not self.context.settings.open_latest_on_double_click:
@@ -782,9 +963,32 @@ class MainWindow(QMainWindow):
             return
         try:
             self.context.tasks.archive(self.current_project, task)
+            if not self.task_panel.show_archived.isChecked():
+                self.current_task = None
+                self.details_panel.clear_task()
             self._load_tasks(self.current_project)
         except Exception as exc:
             self._error("Cannot archive task", exc)
+
+    def restore_task(self, task: TaskSettings) -> None:
+        if not self.current_project:
+            return
+        try:
+            self.context.tasks.restore(self.current_project, task)
+            self.current_task = task
+            self._load_tasks(self.current_project)
+            self.statusBar().showMessage(f"Task restored: {task.name}", 6000)
+        except Exception as exc:
+            self._error("Cannot restore task", exc)
+
+    def _task_archived_visibility_changed(self, show_archived: bool) -> None:
+        if (
+            not show_archived
+            and self.current_task
+            and self.current_task.status == "archived"
+        ):
+            self.current_task = None
+            self.details_panel.clear_task()
 
     def delete_task_permanently(self, task: TaskSettings) -> None:
         if not self.current_project:
@@ -1436,13 +1640,13 @@ class MainWindow(QMainWindow):
         if self._progress_thread and self._progress_thread.isRunning():
             QMessageBox.information(
                 self,
-                "Cache Import in Progress",
-                "Wait for the current Cache Import to finish.",
+                "Operation in Progress",
+                "Wait for the current file operation to finish.",
             )
             return
         self.statusBar().showMessage(message)
         self.import_progress.setValue(0)
-        self.import_progress.setFormat("Preparing Cache Import: %p%")
+        self.import_progress.setFormat("Preparing: %p%")
         self.import_progress.show()
         thread = ProgressOperationThread(operation, self)
         self._progress_thread = thread
@@ -1467,6 +1671,113 @@ class MainWindow(QMainWindow):
         self.import_progress.setValue(value)
         self.import_progress.setFormat(f"{phase}: %p%")
         self.statusBar().showMessage(f"{phase}: {value}%")
+
+    def _maybe_check_updates(self) -> None:
+        settings = self.context.settings
+        if not settings.auto_check_updates or not settings.update_channel_path:
+            return
+        cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+        last = settings.last_update_check_at
+        if last is None or last.astimezone(timezone.utc) <= cutoff:
+            self.check_for_updates(False)
+
+    def check_for_updates(self, manual: bool = True) -> None:
+        channel = self.context.settings.update_channel_path
+        if channel is None:
+            if manual:
+                QMessageBox.information(
+                    self,
+                    "Update Channel Required",
+                    "Set an Update Channel in Launcher Settings > Updates.",
+                )
+            return
+        if self._update_check_running:
+            if manual:
+                self.statusBar().showMessage("An update check is already running", 4000)
+            return
+        self._update_check_running = True
+        self._run_operation(
+            "Checking for Launcher updates...",
+            lambda: self.context.updates.check(channel),
+            lambda result: self._update_check_completed(result, manual),
+            failed=lambda error: self._update_check_failed(error, manual),
+        )
+
+    def _update_check_completed(self, result: object, manual: bool) -> None:
+        self._update_check_running = False
+        self.context.settings.last_update_check_at = datetime.now(timezone.utc)
+        self.context.save_settings()
+        if result is None:
+            if manual:
+                QMessageBox.information(
+                    self,
+                    "HouD2Launcher is Up to Date",
+                    f"Installed Version: {__version__}",
+                )
+            else:
+                self.statusBar().showMessage("HouD2Launcher is up to date", 4000)
+            return
+        if not isinstance(result, AvailableUpdate):
+            self._error("Cannot Check for Updates", "Unexpected update response")
+            return
+        self._offer_update(result)
+
+    def _update_check_failed(self, error: str, manual: bool) -> None:
+        self._update_check_running = False
+        if manual:
+            self._error("Cannot Check for Updates", error)
+        else:
+            LOGGER.warning("Automatic update check failed: %s", error)
+            self.statusBar().showMessage("Update Channel is unavailable", 5000)
+
+    def _offer_update(self, update: AvailableUpdate) -> None:
+        manifest = update.manifest
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("HouD2Launcher Update Available")
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setText(
+            f"HouD2Launcher {manifest.version} is available.\n"
+            f"Installed: {__version__}\n"
+            f"Size: {self.details_panel._format_size(manifest.size_bytes)}"
+        )
+        if manifest.release_notes.strip():
+            dialog.setInformativeText(manifest.release_notes.strip())
+        update_button = dialog.addButton("Update", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() != update_button:
+            return
+        self._run_progress_operation(
+            "Preparing Launcher Update...",
+            lambda progress: self.context.updates.stage(
+                update, self.context.data_home, progress
+            ),
+            lambda path: self._update_staged(update, Path(path)),
+            failed=lambda error: self._error("Cannot Prepare Update", error),
+        )
+
+    def _update_staged(self, update: AvailableUpdate, installer: Path) -> None:
+        try:
+            self.context.updates.backup_local_state(
+                self.context.data_home,
+                self.context.settings_path,
+                self.context.database.path,
+                __version__,
+                update.manifest.version,
+            )
+        except Exception as exc:
+            self._error("Cannot Back Up Launcher Data", exc)
+            return
+
+        def launch() -> None:
+            try:
+                self.context.updates.launch_installer(installer)
+            except Exception as exc:
+                self._error("Cannot Start Update Installer", exc)
+                return
+            QApplication.quit()
+
+        QTimer.singleShot(350, launch)
 
     def _operation_refresh(self, message: str) -> None:
         self.statusBar().showMessage(message, 5000)
@@ -1501,11 +1812,19 @@ class MainWindow(QMainWindow):
     def open_logs(self) -> None:
         self._reveal(self.context.data_home / "logs")
 
+    def open_handbook(self) -> None:
+        path = self.context.root / "docs" / "houd2-handbook.html"
+        if not path.is_file():
+            self._error("Cannot Open Handbook", f"Handbook was not found: {path}")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
     def about(self) -> None:
         QMessageBox.about(
             self,
             "About HouD2Launcher",
-            "HouD2Launcher v0.2\nLocal-first standalone project launcher for Houdini.",
+            f"HouD2Launcher v{__version__}\n"
+            "Local-first standalone project launcher for Houdini.",
         )
 
     def _error(self, title: str, error: object) -> None:

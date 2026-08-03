@@ -4,6 +4,7 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -53,6 +54,9 @@ class ProjectPanel(QWidget):
     import_requested = Signal(object)
     duplicate_requested = Signal(object)
     archive_requested = Signal(object)
+    restore_requested = Signal(object)
+    delete_requested = Signal(object)
+    archived_visibility_changed = Signal(bool)
     favorite_requested = Signal(object, bool)
     package_import_requested = Signal(object)
 
@@ -82,6 +86,10 @@ class ProjectPanel(QWidget):
         menu_button.setMenu(header_menu)
         header.addWidget(menu_button)
         layout.addLayout(header)
+        self.show_archived = QCheckBox("Show Archived")
+        self.show_archived.setToolTip("Show archived Projects in this list")
+        self.show_archived.toggled.connect(self.archived_visibility_changed)
+        layout.addWidget(self.show_archived)
         self.list = QListWidget()
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -102,12 +110,16 @@ class ProjectPanel(QWidget):
         for project in projects:
             state = "Available" if project.project_root.is_dir() else "Missing"
             record = records.get(project.project_id, {})
+            archived = bool(record.get("archived"))
+            if archived:
+                state = "Archived"
             favorite = bool(record.get("favorite"))
             accessed = str(record.get("last_accessed") or "")[:16].replace("T", " ")
             item = QListWidgetItem()
             item.setSizeHint(QSize(220, 78))
             item.setData(Qt.ItemDataRole.UserRole, project)
             item.setData(Qt.ItemDataRole.UserRole + 1, favorite)
+            item.setData(Qt.ItemDataRole.UserRole + 2, archived)
             item.setToolTip(str(project.project_root))
             self.list.addItem(item)
             self.list.setItemWidget(
@@ -133,6 +145,8 @@ class ProjectPanel(QWidget):
         project = self.current_project()
         if project is None:
             return
+        item = self.list.currentItem()
+        archived = bool(item.data(Qt.ItemDataRole.UserRole + 2)) if item else False
         menu = QMenu(self)
         actions: list[tuple[str, object]] = [
             ("New Task", lambda: self.new_task_requested.emit()),
@@ -142,7 +156,14 @@ class ProjectPanel(QWidget):
             ("Import Task Package...", lambda: self.package_import_requested.emit(project)),
             ("Open in Explorer", lambda: self.reveal_requested.emit(project)),
             ("Duplicate Project Configuration", lambda: self.duplicate_requested.emit(project)),
-            ("Archive Project", lambda: self.archive_requested.emit(project)),
+            (
+                "Restore Project" if archived else "Archive Project",
+                lambda: (
+                    self.restore_requested.emit(project)
+                    if archived
+                    else self.archive_requested.emit(project)
+                ),
+            ),
             (
                 "Remove from Favorites" if bool(self.list.currentItem().data(Qt.ItemDataRole.UserRole + 1)) else "Add to Favorites",
                 lambda: self.favorite_requested.emit(
@@ -151,6 +172,7 @@ class ProjectPanel(QWidget):
                 ),
             ),
             ("Remove from Launcher", lambda: self.unregister_requested.emit(project)),
+            ("Delete Project Permanently...", lambda: self.delete_requested.emit(project)),
         ]
         for label, callback in actions:
             action = QAction(label, menu)

@@ -94,3 +94,49 @@ def test_add_existing_repairs_stale_id_but_rejects_same_id(
     assert added.project_id == replacement.project_id
     with pytest.raises(DuplicateRegistrationError, match="already registered"):
         manager.add_existing(project.project_root)
+
+
+def test_archived_project_is_hidden_until_requested(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+    repository.set_project_archived(project.project_id, True)
+
+    assert manager.registered() == []
+    assert manager.registered(include_archived=True)[0].project_id == project.project_id
+
+
+def test_delete_project_permanently_removes_root_and_indexes(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+    payload = project.project_root / "shot" / "houdini" / "scene.hip"
+    payload.parent.mkdir(parents=True)
+    payload.write_bytes(b"hip")
+
+    deleted = manager.delete_permanently(project)
+
+    assert deleted == project.project_root
+    assert not deleted.exists()
+    assert repository.list_projects(include_archived=True) == []
+
+
+def test_delete_project_rejects_mismatched_canonical_metadata(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+    replacement = ProjectSettings(name=project.name, project_root=project.project_root)
+    atomic_write_model(resolver.resolve_project_metadata_path(project), replacement)
+
+    with pytest.raises(ValueError, match="does not match"):
+        manager.delete_permanently(project)
+    assert project.project_root.is_dir()

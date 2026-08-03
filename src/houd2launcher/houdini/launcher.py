@@ -23,6 +23,7 @@ from ..core.models import (
 from ..database.repositories import LauncherRepository
 from .process_options import hidden_console_options
 from .editions import resolve_houdini_edition
+from .hda_manager import HdaManager
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,7 @@ class HoudiniLauncher:
         run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
         api_url: str = "",
         api_token: str = "",
+        hda_manager: HdaManager | None = None,
     ) -> None:
         self.environment_resolver = environment_resolver
         self.hip_manager = hip_manager
@@ -54,6 +56,7 @@ class HoudiniLauncher:
         self.launcher_root = launcher_root.resolve()
         self.api_url = api_url
         self.api_token = api_token
+        self.hda_manager = hda_manager
         self._popen = popen
         self._run = run
 
@@ -292,6 +295,9 @@ class HoudiniLauncher:
         user: str,
         overrides: dict[str, str],
     ) -> dict[str, str]:
+        integration = (
+            self.hda_manager.integration(installation) if self.hda_manager else None
+        )
         return self.environment_resolver.build(
             project,
             task,
@@ -305,6 +311,10 @@ class HoudiniLauncher:
             machine_id=launcher_settings.machine_id,
             api_url=self.api_url,
             api_token=self.api_token,
+            managed_hda_root=str(integration.root) if integration else "",
+            managed_hda_version=(
+                integration.builder_fingerprint if integration else ""
+            ),
         )
 
     @staticmethod
