@@ -10,6 +10,21 @@ QMainWindow, QMenuBar, QMenu, QStatusBar {
     color: #e6e9e7;
 }
 
+QProgressBar {
+    min-height: 20px;
+    background: #151816;
+    color: #f3f6f4;
+    border: 1px solid #465049;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 600;
+}
+
+QProgressBar::chunk {
+    background: #4f9f68;
+    border-radius: 3px;
+}
+
 QMenuBar::item:selected, QMenu::item:selected {
     background: #3b4540;
 }

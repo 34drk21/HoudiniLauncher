@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QCheckBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -31,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from ...core.hip_manager import HipRecord
 from ...core.cache_manager import CacheGroup, CacheRecord, CacheScanResult, group_cache_records
+from ...core.cache_exchange import PublishedCacheRecord
 from ...core.models import ProjectSettings, TaskSettings
 from ...core.path_resolver import PathResolver
 from ..widgets import ElideLabel
@@ -49,6 +52,10 @@ class TaskDetailsPanel(QWidget):
     cache_scan_requested = Signal(object)
     cache_delete_requested = Signal(object)
     reveal_cache_requested = Signal(object)
+    cache_publish_requested = Signal(object, str)
+    cache_import_requested = Signal(object, str, bool)
+    exchange_path_changed = Signal(str)
+    published_refresh_requested = Signal()
 
     def __init__(self, resolver: PathResolver, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -58,6 +65,7 @@ class TaskDetailsPanel(QWidget):
         self.task: TaskSettings | None = None
         self.hips: list[HipRecord] = []
         self.cache_records: list[CacheRecord] = []
+        self.published_records: list[PublishedCacheRecord] = []
         self._cache_hip: Path | None = None
         self._cache_loading = False
         layout = QVBoxLayout(self)
@@ -70,6 +78,7 @@ class TaskDetailsPanel(QWidget):
         self._build_overview()
         self._build_hips()
         self._build_caches()
+        self._build_imports()
         self._build_settings()
         self._build_history()
         self.tabs.currentChanged.connect(self._tab_changed)
@@ -178,6 +187,18 @@ class TaskDetailsPanel(QWidget):
     def _build_caches(self) -> None:
         page = QWidget()
         layout = QVBoxLayout(page)
+        path_row = QHBoxLayout()
+        self.exchange_path = QLineEdit()
+        self.exchange_path.setPlaceholderText("Published Cache folder, for example Z:/houd2_exchange")
+        self.exchange_path.editingFinished.connect(self._exchange_path_edited)
+        browse = QToolButton()
+        browse.setText("...")
+        browse.setToolTip("Choose Published Cache Folder")
+        browse.clicked.connect(self._browse_exchange_path)
+        path_row.addWidget(QLabel("Publish / Import Path"))
+        path_row.addWidget(self.exchange_path, 1)
+        path_row.addWidget(browse)
+        layout.addLayout(path_row)
         header = QHBoxLayout()
         self.cache_hip_label = ElideLabel("Select a HIP version")
         self.cache_hip_label.setObjectName("SecondaryText")
@@ -247,6 +268,50 @@ class TaskDetailsPanel(QWidget):
         self.cache_table.customContextMenuRequested.connect(self._cache_context_menu)
         layout.addWidget(self.cache_table)
         self.cache_tab_index = self.tabs.addTab(page, "Caches")
+
+    def _build_imports(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        path_row = QHBoxLayout()
+        self.import_exchange_path = QLineEdit()
+        self.import_exchange_path.setPlaceholderText("Published Cache folder")
+        self.import_exchange_path.editingFinished.connect(self._import_path_edited)
+        browse = QToolButton()
+        browse.setText("...")
+        browse.clicked.connect(self._browse_exchange_path)
+        refresh = QToolButton()
+        refresh.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        refresh.setToolTip("Refresh Published Caches")
+        refresh.clicked.connect(lambda: self.published_refresh_requested.emit())
+        path_row.addWidget(QLabel("Publish / Import Path"))
+        path_row.addWidget(self.import_exchange_path, 1)
+        path_row.addWidget(browse)
+        path_row.addWidget(refresh)
+        layout.addLayout(path_row)
+        filters = QHBoxLayout()
+        self.import_search = QLineEdit()
+        self.import_search.setPlaceholderText("Search project, task, cache, version, or creator")
+        self.import_search.setClearButtonEnabled(True)
+        self.import_search.textChanged.connect(self._rebuild_import_table)
+        self.import_delete_source = QCheckBox("Delete published copy after successful import")
+        self.import_delete_source.setChecked(True)
+        filters.addWidget(self.import_search, 1)
+        filters.addWidget(self.import_delete_source)
+        layout.addLayout(filters)
+        self.import_summary = QLabel("Set a Publish / Import Path to browse shared Caches.")
+        self.import_summary.setObjectName("FieldHelp")
+        layout.addWidget(self.import_summary)
+        self.import_table = QTableWidget(0, 7)
+        self.import_table.setHorizontalHeaderLabels(["Cache", "Version", "Project", "Task", "Creator", "Size", "Published"])
+        self.import_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.import_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.import_table.customContextMenuRequested.connect(self._import_context_menu)
+        self.import_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 7):
+            self.import_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.import_table.setSortingEnabled(True)
+        layout.addWidget(self.import_table)
+        self.import_tab_index = self.tabs.addTab(page, "Import")
 
     def _build_settings(self) -> None:
         page = QWidget()
@@ -318,6 +383,25 @@ class TaskDetailsPanel(QWidget):
         )
         self._load_history(history)
         self._load_expression_environment(expression_environment or {})
+
+    def set_exchange_path(self, value: str) -> None:
+        self.exchange_path.setText(value)
+        self.import_exchange_path.setText(value)
+
+    def set_published_records(self, records: tuple[PublishedCacheRecord, ...]) -> None:
+        self.published_records = list(records)
+        self._rebuild_import_table()
+
+    def open_import_tab(self, cache_id: str = "") -> None:
+        self.tabs.setCurrentIndex(self.import_tab_index)
+        self._rebuild_import_table()
+        for index in range(self.import_table.rowCount()):
+            item = self.import_table.item(index, 0)
+            record = item.data(Qt.ItemDataRole.UserRole)
+            if record and record.manifest.cache_id == cache_id:
+                self.import_table.selectRow(index)
+                self.import_table.scrollToItem(item)
+                break
 
     def clear_task(self) -> None:
         """Clear stale details after the final Task in a Project is removed."""
@@ -523,9 +607,19 @@ class TaskDetailsPanel(QWidget):
         else:
             groups.sort(key=lambda item: (not item[0].is_used, -item[0].size))
         self.cache_table.clear()
+        published_keys = {
+            (item.manifest.cache_name.casefold(), item.manifest.version)
+            for item in self.published_records
+            if self.project and self.task
+            and item.manifest.project_id == self.project.project_id
+            and item.manifest.task_id == self.task.task_id
+        }
         for group, children in groups:
+            group_published = any(
+                (group.name.casefold(), child.version) in published_keys for child in group.versions
+            )
             parent_values = (
-                "USED" if group.is_used else "UNUSED",
+                ("USED" if group.is_used else "UNUSED") + (" / PUBLISHED" if group_published else ""),
                 group.name,
                 f"{len(group.versions)} versions",
                 ", ".join(sorted({item.kind for item in group.versions})),
@@ -544,6 +638,8 @@ class TaskDetailsPanel(QWidget):
                 children.sort(key=lambda item: item.version or -1)
             for record in children:
                 state = "USED" if record.is_used else "UNUSED"
+                if (record.name.casefold(), record.version) in published_keys:
+                    state += " / PUBLISHED"
                 if not record.exists:
                     state += " / MISSING"
                 values = (
@@ -592,6 +688,9 @@ class TaskDetailsPanel(QWidget):
         if not records:
             return
         menu = QMenu(self)
+        publish = menu.addAction("Publish this Cache", lambda: self.cache_publish_requested.emit(records, self.exchange_path.text().strip()))
+        publish.setEnabled(bool(self.exchange_path.text().strip()))
+        menu.addSeparator()
         delete = menu.addAction("Delete Permanently", self._emit_cache_delete)
         delete.setEnabled(all(record.managed and record.exists for record in records))
         menu.addAction(
@@ -601,6 +700,72 @@ class TaskDetailsPanel(QWidget):
             "Copy Path", lambda: QApplication.clipboard().setText(str(records[0].path))
         )
         menu.exec(self.cache_table.mapToGlobal(position))
+
+    def _exchange_path_edited(self) -> None:
+        value = self.exchange_path.text().strip()
+        self.import_exchange_path.setText(value)
+        self.exchange_path_changed.emit(value)
+
+    def _import_path_edited(self) -> None:
+        value = self.import_exchange_path.text().strip()
+        self.exchange_path.setText(value)
+        self.exchange_path_changed.emit(value)
+
+    def _browse_exchange_path(self) -> None:
+        current = self.exchange_path.text().strip() or self.import_exchange_path.text().strip()
+        value = QFileDialog.getExistingDirectory(self, "Choose Published Cache Folder", current)
+        if value:
+            self.exchange_path.setText(value)
+            self.import_exchange_path.setText(value)
+            self.exchange_path_changed.emit(value)
+
+    def _rebuild_import_table(self) -> None:
+        if not hasattr(self, "import_table"):
+            return
+        search = self.import_search.text().strip().casefold()
+        self.import_table.setSortingEnabled(False)
+        self.import_table.clearContents()
+        self.import_table.setRowCount(0)
+        visible = 0
+        for record in self.published_records:
+            manifest = record.manifest
+            haystack = " ".join((manifest.project_name, manifest.task_name, manifest.cache_name,
+                                 str(manifest.version), str(manifest.source_manifest.get("creator", "")))).casefold()
+            if search and search not in haystack:
+                continue
+            creator = manifest.source_manifest.get("creator", {})
+            creator_name = str(creator.get("display_name", creator.get("user_id", "Unknown"))) if isinstance(creator, dict) else "Unknown"
+            size = sum(item.size for item in manifest.files)
+            row = self.import_table.rowCount()
+            self.import_table.insertRow(row)
+            for column, value in enumerate((
+                manifest.cache_name, f"v{manifest.version:03d}", manifest.project_name,
+                manifest.task_name, creator_name, self._format_size(size), manifest.published_at[:19],
+            )):
+                item = QTableWidgetItem(value)
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, record)
+                self.import_table.setItem(row, column, item)
+            visible += 1
+        self.import_summary.setText(f"{visible} published Cache Versions")
+        self.import_table.setSortingEnabled(True)
+
+    def _import_context_menu(self, position: object) -> None:
+        item = self.import_table.itemAt(position)
+        if item is None:
+            return
+        self.import_table.setCurrentItem(item)
+        self.import_table.selectRow(item.row())
+        record = self.import_table.item(item.row(), 0).data(Qt.ItemDataRole.UserRole)
+        menu = QMenu(self)
+        action = menu.addAction(
+            "Import this Cache",
+            lambda: self.cache_import_requested.emit(
+                record, self.import_exchange_path.text().strip(), self.import_delete_source.isChecked()
+            ),
+        )
+        action.setEnabled(self.project is not None and self.task is not None)
+        menu.exec(self.import_table.mapToGlobal(position))
 
     @staticmethod
     def _details_text(value: object) -> str:

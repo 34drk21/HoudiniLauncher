@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHeaderView,
+    QLabel,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from ...core.models import SettingsPackage
 from ...settings.diff import Difference
+from ...settings.importer import ImportIdentity
 
 
 class SettingsImportDialog(QDialog):
@@ -23,6 +25,7 @@ class SettingsImportDialog(QDialog):
         self,
         package: SettingsPackage,
         differences: list[Difference],
+        identity: ImportIdentity,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -30,10 +33,38 @@ class SettingsImportDialog(QDialog):
         self.setWindowTitle(f"Import {package.scope.title()} Settings")
         self.resize(820, 520)
         layout = QVBoxLayout(self)
+        status_text = {
+            "exact": "Same ID: this package is an update for the selected target.",
+            "name_match": (
+                "Same name, different ID: verify the target carefully before updating."
+            ),
+            "mismatch": "Different target: settings will be imported as a template.",
+            "legacy": "Legacy package: source identity is not available.",
+        }[identity.status]
+        project_context = ""
+        if package.scope == "task":
+            source_project = identity.source_project_name or "Unknown Project"
+            project_context = (
+                f"\nSource Project: {source_project} "
+                f"({identity.source_project_id or 'No ID'})"
+                f"\nTarget Project ID: {identity.target_project_id or 'No ID'}"
+            )
+        identity_label = QLabel(
+            f"{status_text}\n"
+            f"Source: {identity.source_name or 'Unknown'} "
+            f"({identity.source_id or 'No ID'})\n"
+            f"Target: {identity.target_name} ({identity.target_id})"
+            f"{project_context}"
+        )
+        identity_label.setWordWrap(True)
+        identity_label.setObjectName(f"settingsImportIdentity_{identity.status}")
+        layout.addWidget(identity_label)
         self.mode = QComboBox()
         self.mode.addItem("Merge (keep existing keys)", "merge")
         self.mode.addItem("Merge and Overwrite", "overwrite")
         self.mode.addItem("Replace Section", "replace_section")
+        if identity.is_update:
+            self.mode.setCurrentIndex(self.mode.findData("replace_section"))
         layout.addWidget(self.mode)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Apply", "Setting", "Current", "Incoming"])
@@ -67,4 +98,3 @@ class SettingsImportDialog(QDialog):
             for row in range(self.table.rowCount())
             if self.table.item(row, 0).checkState() == Qt.CheckState.Checked
         }
-

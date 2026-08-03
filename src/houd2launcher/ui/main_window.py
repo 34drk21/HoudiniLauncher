@@ -21,18 +21,26 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QSplitter,
 )
 
 from ..application import ApplicationContext
-from ..core.config import atomic_write_model
+from ..core.config import atomic_write_model, backup_file
+from ..core.folder_migration import FolderMigrationPlan
 from ..core.hip_manager import HipRecord
 from ..core.models import HoudiniInstallation, ProjectSettings, TaskSettings
 from ..houdini.editions import available_houdini_editions
 from ..houdini.installation_manager import HoudiniInstallationManager
 from ..houdini.open_policy import should_show_open_dialog
 from ..settings.exporter import export_package
-from ..settings.importer import apply_import, load_package, preview_import
+from ..settings.importer import (
+    ImportIdentity,
+    build_import_candidate,
+    identify_import,
+    load_package,
+    preview_import,
+)
 from .dialogs.hip_open_dialog import HipOpenDialog, NewHipDialog
 from .dialogs.launcher_settings_dialog import LauncherSettingsDialog
 from .dialogs.project_task_dialogs import (
@@ -43,6 +51,7 @@ from .dialogs.project_task_dialogs import (
 )
 from .dialogs.settings_import_dialog import SettingsImportDialog
 from .dialogs.task_package_dialog import TaskPackageImportDialog
+from .dialogs.sdm_package_dialog import SdmPackageDialog
 from .panels.project_panel import ProjectPanel
 from .panels.task_details_panel import TaskDetailsPanel
 from .panels.task_panel import TaskPanel
@@ -70,16 +79,43 @@ class OperationThread(QThread):
             self.failed.emit(str(exc))
 
 
+class ProgressOperationThread(QThread):
+    """Execute an operation that reports integer percentage updates."""
+
+    completed = Signal(object)
+    failed = Signal(str)
+    progress = Signal(int, str)
+
+    def __init__(
+        self,
+        operation: Callable[[Callable[[int, str], None]], Any],
+        parent: object | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.operation = operation
+
+    def run(self) -> None:
+        try:
+            self.completed.emit(self.operation(self.progress.emit))
+        except Exception as exc:
+            LOGGER.exception("Background progress operation failed")
+            self.failed.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
     """HouD2Launcher's resizable three-column main window."""
+
+    open_import_requested = Signal(str)
 
     def __init__(self, context: ApplicationContext) -> None:
         super().__init__()
         self.context = context
         self.current_project: ProjectSettings | None = None
         self.current_task: TaskSettings | None = None
-        self._threads: set[OperationThread] = set()
-        self._ignored_task_candidates: set[str] = set()
+        self._threads: set[QThread] = set()
+        self._progress_thread: ProgressOperationThread | None = None
+        self._ignored_task_candidates: set[tuple[str, str]] = set()
+        self._suppress_adoption_prompts = True
         self._filesystem_watcher = QFileSystemWatcher(self)
         self._filesystem_timer = QTimer(self)
         self._filesystem_timer.setSingleShot(True)
@@ -109,8 +145,17 @@ class MainWindow(QMainWindow):
         self._restore_ui_state()
         self.setCentralWidget(self.splitter)
         self._connect_signals()
+        self.open_import_requested.connect(self._open_import_for_cache)
+        self.context.catalog_api.open_import_callback = self.open_import_requested.emit
+        self.import_progress = QProgressBar(self)
+        self.import_progress.setRange(0, 100)
+        self.import_progress.setFixedWidth(280)
+        self.import_progress.setTextVisible(True)
+        self.statusBar().addPermanentWidget(self.import_progress)
+        self.import_progress.hide()
         self.statusBar().showMessage("Ready")
         self.refresh_projects()
+        self._suppress_adoption_prompts = False
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -162,6 +207,7 @@ class MainWindow(QMainWindow):
         self.task_panel.export_requested.connect(self._export_task_from_context)
         self.task_panel.import_requested.connect(self._import_task_from_context)
         self.task_panel.package_export_requested.connect(self.export_task_package)
+        self.task_panel.sdm_export_requested.connect(self.export_sdm_package)
         self.task_panel.delete_requested.connect(self.delete_task_permanently)
         self.details_panel.open_requested.connect(self.open_hip)
         self.details_panel.version_up_requested.connect(self.version_up)
@@ -175,6 +221,10 @@ class MainWindow(QMainWindow):
         self.details_panel.cache_scan_requested.connect(self.scan_hip_caches)
         self.details_panel.cache_delete_requested.connect(self.delete_caches)
         self.details_panel.reveal_cache_requested.connect(self.reveal_cache)
+        self.details_panel.cache_publish_requested.connect(self.publish_caches)
+        self.details_panel.cache_import_requested.connect(self.import_published_cache)
+        self.details_panel.exchange_path_changed.connect(self._exchange_path_changed)
+        self.details_panel.published_refresh_requested.connect(self.refresh_published_caches)
 
     def refresh_projects(self) -> None:
         """Reload registered projects from canonical JSON files."""
@@ -214,7 +264,6 @@ class MainWindow(QMainWindow):
 
     def _select_project(self, project: ProjectSettings) -> None:
         self.current_project = project
-        self._ignored_task_candidates.clear()
         if self.context.settings.remember_last_project:
             self.context.settings.last_project_id = project.project_id
             self.context.save_settings()
@@ -229,9 +278,14 @@ class MainWindow(QMainWindow):
             candidates = [
                 name
                 for name in report.task_candidates
-                if name not in self._ignored_task_candidates
+                if (project.project_id, name) not in self._ignored_task_candidates
             ]
             if candidates:
+                if self._suppress_adoption_prompts:
+                    self._ignored_task_candidates.update(
+                        (project.project_id, name) for name in candidates
+                    )
+                    candidates = []
                 adopted = False
                 for name in candidates:
                     dialog = NewTaskDialog(project, self)
@@ -243,7 +297,7 @@ class MainWindow(QMainWindow):
                         self.context.tasks.adopt_existing(project, dialog.settings())
                         adopted = True
                     else:
-                        self._ignored_task_candidates.add(name)
+                        self._ignored_task_candidates.add((project.project_id, name))
                 if adopted:
                     report = self.context.filesystem.reconcile(project)
             tasks = list(report.tasks)
@@ -327,6 +381,11 @@ class MainWindow(QMainWindow):
                 history,
                 expression_environment,
             )
+            exchange_path = self.context.settings.cache_exchange_paths.get(
+                self.current_project.project_id, ""
+            )
+            self.details_panel.set_exchange_path(exchange_path)
+            self._refresh_published_caches()
         except Exception as exc:
             self._error("Cannot load task details", exc)
 
@@ -812,25 +871,90 @@ class MainWindow(QMainWindow):
             return
         assert self.current_project
         try:
+            current = self.current_project
             package = load_package(Path(path))
-            differences = preview_import(self.current_project, package)
-            dialog = SettingsImportDialog(package, differences, self)
+            identity = identify_import(current, package)
+            differences = preview_import(current, package)
+            dialog = SettingsImportDialog(package, differences, identity, self)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            config_path = self.context.resolver.resolve_project_metadata_path(
-                self.current_project
-            )
-            imported, backup = apply_import(
-                self.current_project,
+            selected = dialog.selected_sections()
+            if not selected:
+                QMessageBox.information(
+                    self, "Nothing to Import", "No changed settings were selected."
+                )
+                return
+            imported = build_import_candidate(
+                current,
                 package,
-                config_path,
                 dialog.mode.currentData(),
-                dialog.selected_sections(),
+                selected,
             )
+            report = self.context.filesystem.reconcile(current)
+            migration = self.context.folder_migrator.plan(
+                current, imported, list(report.tasks)
+            )
+            if migration.blockers:
+                QMessageBox.critical(
+                    self,
+                    "Cannot Import Folder Structure",
+                    "Resolve these filesystem conflicts before importing:\n\n"
+                    + "\n".join(f"- {item}" for item in migration.blockers),
+                )
+                return
+            if not self._confirm_settings_import(
+                identity,
+                "Project",
+                selected,
+                dialog.mode.currentData(),
+                migration,
+            ):
+                return
+            config_path = self.context.resolver.resolve_project_metadata_path(
+                current
+            )
+            backup = backup_file(config_path)
+            migration_applied = False
+            save_started = False
+            try:
+                if migration.actions:
+                    self.context.folder_migrator.apply(current, migration)
+                    migration_applied = True
+                save_started = True
+                self.context.projects.save(imported)
+                self.context.folder_migrator.recover_pending(imported)
+            except Exception:
+                if save_started:
+                    try:
+                        atomic_write_model(config_path, current)
+                    except Exception:
+                        LOGGER.exception("Cannot restore Project settings backup")
+                if migration_applied:
+                    try:
+                        self.context.folder_migrator.recover_pending(current)
+                    except Exception:
+                        LOGGER.exception("Cannot roll back imported folder structure")
+                raise
             self.current_project = imported
-            self.context.projects.save(imported)
             self.context.repository.record_settings_import(
                 "project", imported.project_id, Path(path), backup
+            )
+            self.context.repository.record_activity(
+                imported.project_id,
+                "project_settings_imported",
+                {
+                    "source_id": identity.source_id,
+                    "source_name": identity.source_name,
+                    "identity_match": identity.status,
+                    "sections": sorted(selected),
+                    "folder_moves": sum(
+                        item.kind == "move" for item in migration.actions
+                    ),
+                    "folder_creates": sum(
+                        item.kind == "create" for item in migration.actions
+                    ),
+                    "retained_folders": len(migration.retained),
+                },
             )
             self.refresh_projects()
             self.statusBar().showMessage(f"Imported settings. Backup: {backup}", 8000)
@@ -845,7 +969,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             try:
-                export_package(self.current_task, Path(path))
+                export_package(self.current_task, Path(path), self.current_project)
                 self.statusBar().showMessage("Task settings exported", 4000)
             except Exception as exc:
                 self._error("Cannot export task settings", exc)
@@ -860,30 +984,123 @@ class MainWindow(QMainWindow):
             return
         assert self.current_project and self.current_task
         try:
+            current = self.current_task
             package = load_package(Path(path))
-            differences = preview_import(self.current_task, package)
-            dialog = SettingsImportDialog(package, differences, self)
+            identity = identify_import(current, package)
+            differences = preview_import(current, package)
+            dialog = SettingsImportDialog(package, differences, identity, self)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            config_path = self.context.resolver.resolve_task_metadata_path(
-                self.current_project, self.current_task
-            )
-            imported, backup = apply_import(
-                self.current_task,
+            selected = dialog.selected_sections()
+            if not selected:
+                QMessageBox.information(
+                    self, "Nothing to Import", "No changed settings were selected."
+                )
+                return
+            imported = build_import_candidate(
+                current,
                 package,
-                config_path,
                 dialog.mode.currentData(),
-                dialog.selected_sections(),
+                selected,
             )
+            if not self._confirm_settings_import(
+                identity, "Task", selected, dialog.mode.currentData()
+            ):
+                return
+            config_path = self.context.resolver.resolve_task_metadata_path(
+                self.current_project, current
+            )
+            backup = backup_file(config_path)
+            try:
+                self.context.tasks.save(self.current_project, imported)
+            except Exception:
+                try:
+                    atomic_write_model(config_path, current)
+                except Exception:
+                    LOGGER.exception("Cannot restore Task settings backup")
+                raise
             self.current_task = imported
-            self.context.tasks.save(self.current_project, imported)
             self.context.repository.record_settings_import(
                 "task", imported.task_id, Path(path), backup
             )
+            self.context.repository.record_activity(
+                self.current_project.project_id,
+                "task_settings_imported",
+                {
+                    "source_id": identity.source_id,
+                    "source_name": identity.source_name,
+                    "identity_match": identity.status,
+                    "sections": sorted(selected),
+                },
+                imported.task_id,
+            )
             self._load_tasks(self.current_project)
+            self._select_task(imported)
             self.statusBar().showMessage(f"Imported task settings. Backup: {backup}", 8000)
         except Exception as exc:
             self._error("Cannot import task settings", exc)
+
+    def _confirm_settings_import(
+        self,
+        identity: ImportIdentity,
+        scope: str,
+        sections: set[str],
+        mode: str,
+        migration: FolderMigrationPlan | None = None,
+    ) -> bool:
+        """Require an explicit confirmation for updates and folder mutations."""
+        actions = migration.actions if migration else ()
+        moves = sum(item.kind == "move" for item in actions)
+        creates = sum(item.kind == "create" for item in actions)
+        retained = len(migration.retained) if migration else 0
+        operation = {
+            "merge": "Merge",
+            "overwrite": "Merge and overwrite",
+            "replace_section": "Replace",
+        }.get(mode, "Import")
+        summary = (
+            f"{operation} {len(sections)} portable setting section(s) on "
+            f'{scope} "{identity.target_name}"?'
+        )
+        if migration:
+            summary += (
+                f"\n\nFolder changes: {moves} move(s), {creates} create(s), "
+                f"{retained} retained old folder(s)."
+                "\nRemoved or disabled folders will not be deleted."
+            )
+            changed_paths = [
+                f"- {item.task_name}/{item.role}: {item.kind} -> {item.destination}"
+                for item in actions[:10]
+            ]
+            if len(actions) > 10:
+                changed_paths.append(f"- ... and {len(actions) - 10} more")
+            retained_paths = [f"- retain: {path}" for path in migration.retained[:5]]
+            if len(migration.retained) > 5:
+                retained_paths.append(
+                    f"- ... and {len(migration.retained) - 5} more retained"
+                )
+            preview = changed_paths + retained_paths
+            if preview:
+                summary += "\n\n" + "\n".join(preview)
+        if identity.status == "name_match":
+            summary += (
+                "\n\nThe name matches, but the IDs are different. "
+                "Type the target name to confirm."
+            )
+            confirmation, accepted = QInputDialog.getText(
+                self, f"Confirm {scope} Settings Update", summary
+            )
+            return accepted and confirmation == identity.target_name
+        if identity.status == "exact" or actions:
+            answer = QMessageBox.question(
+                self,
+                f"Confirm {scope} Settings Import",
+                summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            return answer == QMessageBox.StandardButton.Yes
+        return True
 
     def _export_project_from_context(self, project: ProjectSettings) -> None:
         self.current_project = project
@@ -935,6 +1152,34 @@ class MainWindow(QMainWindow):
             lambda path: self.statusBar().showMessage(
                 f"Task Package exported: {path}", 8000
             ),
+        )
+
+    def export_sdm_package(self, task: TaskSettings) -> None:
+        if not self.current_project:
+            return
+        project = self.current_project
+        try:
+            records = list(self.context.caches.discover(project, task, []))
+        except Exception as exc:
+            self._error("Cannot scan Geo Caches", exc)
+            return
+        dialog = SdmPackageDialog(project, records, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        destination = QFileDialog.getExistingDirectory(
+            self, "Export SDM2.0 Package", str(project.project_root.parent)
+        )
+        if not destination:
+            return
+        roles = dialog.selected_roles()
+        caches = dialog.selected_caches()
+        self._run_operation(
+            f"Exporting {task.name} to SDM2.0...",
+            lambda: self.context.sdm_packages.export(
+                project, task, Path(destination), roles, caches
+            ),
+            lambda path: self.statusBar().showMessage(f"SDM2.0 Package exported: {path}", 8000),
+            failed=lambda error: self._error("Cannot export SDM2.0 Package", error),
         )
 
     def import_task_package(self, project: ProjectSettings) -> None:
@@ -1007,6 +1252,7 @@ class MainWindow(QMainWindow):
 
     def _cache_scan_completed(self, result: object) -> None:
         self.details_panel.set_cache_result(result)
+        self._refresh_published_caches()
         self.statusBar().showMessage("Cache scan completed", 5000)
 
     def _cache_scan_failed(self, message: str) -> None:
@@ -1052,6 +1298,100 @@ class MainWindow(QMainWindow):
         path = record.path
         self._reveal(path if path.is_dir() else path.parent)
 
+    def _exchange_path_changed(self, value: str) -> None:
+        if not self.current_project:
+            return
+        if value:
+            self.context.settings.cache_exchange_paths[self.current_project.project_id] = value
+        else:
+            self.context.settings.cache_exchange_paths.pop(self.current_project.project_id, None)
+        self.context.save_settings()
+        self.context.cache_catalog.refresh()
+        self._refresh_published_caches()
+
+    def _refresh_published_caches(self) -> bool:
+        if not self.current_project:
+            self.details_panel.set_published_records(())
+            return True
+        value = self.context.settings.cache_exchange_paths.get(self.current_project.project_id, "")
+        try:
+            records = self.context.cache_exchange.discover(Path(value)) if value else ()
+            self.details_panel.set_published_records(records)
+            return True
+        except Exception as exc:
+            LOGGER.exception("Cannot read Published Caches")
+            self.details_panel.set_published_records(())
+            self.statusBar().showMessage(f"Cannot read Published Caches: {exc}")
+            return False
+
+    def refresh_published_caches(self) -> None:
+        self.context.cache_catalog.refresh()
+        if self._refresh_published_caches():
+            self.statusBar().showMessage("Published Caches refreshed", 5000)
+
+    def publish_caches(self, records: list[object], exchange_path: str) -> None:
+        if not self.current_project or not self.current_task or not exchange_path:
+            self._error("Cannot publish Cache", "Set a Publish / Import Path first")
+            return
+        project, task = self.current_project, self.current_task
+        self._run_operation(
+            "Publishing Cache...",
+            lambda: self.context.cache_exchange.publish(Path(exchange_path), project, task, records),
+            lambda result: self._cache_transfer_completed(f"Published {len(result)} Cache Version(s)"),
+            failed=lambda error: self._error("Cannot publish Cache", error),
+        )
+
+    def import_published_cache(
+        self, record: object, _exchange_path: str, delete_source: bool
+    ) -> None:
+        if not self.current_project or not self.current_task:
+            return
+        project, task = self.current_project, self.current_task
+        self._run_progress_operation(
+            "Importing Cache...",
+            lambda progress: self.context.cache_exchange.import_cache(
+                record,
+                project,
+                task,
+                delete_source=delete_source,
+                progress=progress,
+            ),
+            lambda result: self._cache_transfer_completed(
+                result.warning or "Cache imported successfully"
+            ),
+            failed=lambda error: self._error("Cannot import Cache", error),
+        )
+
+    def _cache_transfer_completed(self, message: str) -> None:
+        self.context.cache_catalog.refresh()
+        self.statusBar().showMessage(message, 5000)
+        self._refresh_published_caches()
+        hip = self.details_panel.selected_hip()
+        if hip:
+            self.scan_hip_caches(hip)
+
+    def _open_import_for_cache(self, cache_id: str) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        try:
+            record = self.context.cache_catalog.find_cache(cache_id)
+            project = next(
+                item for item in self.context.projects.registered()
+                if item.project_id == str(record["project_id"])
+            )
+            task = next(
+                item for item in self.context.tasks.discover(project)
+                if item.task_id == str(record["task_id"])
+            )
+            if not self.current_project or self.current_project.project_id != project.project_id:
+                self._select_project(project)
+            self._select_task(task)
+        except Exception as exc:
+            LOGGER.warning("Could not select Cache import context: %s", exc)
+        self._refresh_published_caches()
+        self.details_panel.open_import_tab(cache_id)
+
     def _recommended_installation(
         self, hip: HipRecord | None, installations: list[HoudiniInstallation]
     ) -> HoudiniInstallation:
@@ -1085,6 +1425,48 @@ class MainWindow(QMainWindow):
         thread.failed.connect(failed or (lambda error: self._error("Operation failed", error)))
         thread.finished.connect(lambda: self._threads.discard(thread))
         thread.start()
+
+    def _run_progress_operation(
+        self,
+        message: str,
+        operation: Callable[[Callable[[int, str], None]], Any],
+        completed: Callable[[object], None],
+        failed: Callable[[str], None] | None = None,
+    ) -> None:
+        if self._progress_thread and self._progress_thread.isRunning():
+            QMessageBox.information(
+                self,
+                "Cache Import in Progress",
+                "Wait for the current Cache Import to finish.",
+            )
+            return
+        self.statusBar().showMessage(message)
+        self.import_progress.setValue(0)
+        self.import_progress.setFormat("Preparing Cache Import: %p%")
+        self.import_progress.show()
+        thread = ProgressOperationThread(operation, self)
+        self._progress_thread = thread
+        self._threads.add(thread)
+        thread.progress.connect(self._update_import_progress)
+        thread.completed.connect(completed)
+        thread.failed.connect(
+            failed or (lambda error: self._error("Operation failed", error))
+        )
+
+        def cleanup() -> None:
+            self.import_progress.hide()
+            self._threads.discard(thread)
+            if self._progress_thread is thread:
+                self._progress_thread = None
+
+        thread.finished.connect(cleanup)
+        thread.start()
+
+    def _update_import_progress(self, percent: int, phase: str) -> None:
+        value = max(0, min(100, percent))
+        self.import_progress.setValue(value)
+        self.import_progress.setFormat(f"{phase}: %p%")
+        self.statusBar().showMessage(f"{phase}: {value}%")
 
     def _operation_refresh(self, message: str) -> None:
         self.statusBar().showMessage(message, 5000)

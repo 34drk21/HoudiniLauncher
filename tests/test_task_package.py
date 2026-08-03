@@ -57,8 +57,10 @@ def test_export_excludes_cache_roles_and_writes_verified_manifest(
     listed = {item["relative_path"] for item in manifest["files"]}
     assert f"task/houdini/{hip_path.name}" in listed
     assert "task/houdini/scripts/tool.py" in listed
-    assert not any("/geo/" in path or "/abc/" in path or "/trash/caches/" in path for path in listed)
-    assert {"geo_cache", "alembic", ".houd2/trash/caches"} <= set(manifest["excluded_roles"])
+    assert not any("/geo/" in path or "/trash/caches/" in path for path in listed)
+    assert "task/houdini/abc/asset.abc" in listed
+    assert {"geo_cache", ".houd2/trash/caches"} <= set(manifest["excluded_roles"])
+    assert "alembic" not in manifest["excluded_roles"]
     assert manifest["source_houdini_versions"] == ["21.0.440"]
     context = json.loads((package / "project_context.json").read_text(encoding="utf-8"))
     assert "project_root" not in context

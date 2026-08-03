@@ -457,6 +457,22 @@
           <div class="callout success"><strong>物理フォルダ名よりRoleを使う</strong>Projectごとに<code>geo</code>の名前を変えても、Launcherは<code>geo_cache</code> Roleから正しい場所を解決します。</div>
         </section>
 
+        <section class="doc-section" id="user-settings-import" data-title="Project / Task設定の更新Import" data-keywords="settings import update override project task folder structure migration legacy schema">
+          <h2>Project / Task設定の更新Import</h2>
+          <p>Settings Package v2には出力元のIDと名前が記録されます。Import時は選択中のProjectまたはTaskと照合し、同じIDなら更新、同名で別IDなら注意が必要な更新候補、どちらも違う場合は設定テンプレートとして表示します。</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>判定</th><th>確認</th><th>動作</th></tr></thead>
+            <tbody>
+              <tr><td>同じID</td><td>更新内容を確認</td><td>Portable Settingsを上書き</td></tr>
+              <tr><td>同名・別ID</td><td>Target名を入力</td><td>入力一致後のみ上書き</td></tr>
+              <tr><td>別名・別ID</td><td>差分Preview</td><td>選択SectionをテンプレートImport</td></tr>
+              <tr><td>Schema v1</td><td>Identityなしと表示</td><td>旧Sectionを互換Import</td></tr>
+            </tbody>
+          </table></div>
+          <p>Project／TaskのID、名前、Project Root、PC固有のHoudini Installation IDは上書きされません。ProjectのFolder Structureが変わる場合は全TaskをPreviewし、新しいAuto Create Roleは作成、同一Roleの変更先へ既存フォルダを移動します。削除・無効化されたRoleの実フォルダは残ります。</p>
+          <div class="callout warning"><strong>衝突時は何も変更しません</strong>移動先に別データがある場合や安全でないPathを検出した場合は、設定JSONとフォルダ移行の両方を停止します。</div>
+        </section>
+
         <section class="doc-section" id="user-cache" data-title="Cacheの確認と削除" data-keywords="cache used unused green red bgeo vdb abc sim usd file cache loadfromdisk delete size search">
           <h2>Cacheの確認と削除</h2>
           <p>HIPを選択して<b>Caches</b>タブを開くと、Projectの<code>geo_cache</code> Role配下に存在する既知形式をすべて走査します。Cache名が親、その下にVersionが表示されます。</p>
@@ -491,17 +507,18 @@ D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
 └─ cache_marker.bgeo.sc</div>
           <p>実キャッシュの保存後、1ポイントのMarker GeometryをHDA出力にします。MarkerのDetail AttributeにはCache ID、Project/Task ID、相対File Pattern、Version、生成者、Frame、容量などが入り、パスワードや他PCの絶対パスは入りません。</p>
           <h3>Cache Inで読む</h3>
-          <p><code>HouD2 Cache In</code>はInput不要です。Project、Task、Cacheを順に選びます。Versionは<b>Latest</b>が既定で、<b>Specific</b>に切り替えると存在するVersionを選択できます。</p>
+          <p><code>HouD2 Cache In</code>はInput不要です。Project、Task、Cacheを順に選びます。Versionは<b>Latest</b>が既定で、<b>Specific</b>に切り替えると存在するVersionを選択できます。<b>Published</b>は共有フォルダ上の最新版を選び、ローカルに無ければLauncherのImportタブを開きます。</p>
+          <p>ノード色は状態を表します。Cache Outは未保存・エラーが赤、正常保存後が緑です。Cache Inは未解決・欠損が赤、最新版の読込が緑、古いVersionの読込が黄色です。操作ボタンはLoadタブ最上部に表示されます。</p>
           <p>Cache Informationには生成者、User ID、Machine ID、作成日時、フレーム範囲、FPS、容量、Source Project / Task、実効Pathが表示されます。別TaskのCacheは元TaskのローカルGeo Rootから直接読みます。</p>
           <div class="callout"><strong>Launcherを起動したまま使う</strong>別Project/TaskのメニューはLauncherのlocalhost Catalogから取得します。Current TaskはAPI停止時もローカルManifestからFallbackできます。</div>
-          <div class="callout warning"><strong>Sync to Localは将来機能</strong>現在はローカルに存在するCacheだけを読みます。HDAのCook中に他PCへ接続したり、ネットワーク同期を開始したりはしません。</div>
+          <div class="callout warning"><strong>Cook中に共有ファイルを直接読みません</strong>Published Cacheがローカルに無い場合はLauncherのImportタブへ移動します。Import中はStatus Barに、共有Cacheの検証、Local Copy、Copy後検証を合算した進捗率が表示されます。完了後は通常のTask配下geoから読みます。</div>
         </section>
 
         <section class="doc-section" id="user-package" data-title="Taskを別ユーザーへ渡す" data-keywords="task package export import handoff manifest checksum sha256 copy transfer cache excluded">
           <h2>Taskを別ユーザーへ渡す</h2>
           <h3>Export</h3>
           <ol class="step-list">
-            <li><strong>Taskを右クリック</strong><span><b>Export Task Package...</b>を選択します。</span></li>
+            <li><strong>Taskを右クリック</strong><span><b>Export Task Package...</b>を選択します。geoの中身だけを除外し、その他の階層を保ちます。</span></li>
             <li><strong>保存先を選択</strong><span><code>{task_name}_houd2package</code>フォルダが作られます。</span></li>
             <li><strong>フォルダごと渡す</strong><span>途中のファイルを抜かず、Packageフォルダ全体を渡します。</span></li>
           </ol>
@@ -1120,7 +1137,7 @@ houdini/
 
           <details class="file-reference">
             <summary><code>settings/diff.py</code> / <code>settings/exporter.py</code> / <code>settings/importer.py</code></summary>
-            <div class="file-reference-body"><ul class="function-list"><li><code>diff_values()</code><span>Nested設定をField Path単位のBefore/After差分へ変換します。</span></li><li><code>build_package() / export_package()</code><span>秘密情報を除外したProject/Task Settings Packageを作成・保存します。</span></li><li><code>load_package() / preview_import()</code><span>Package SchemaとScopeを検証し、選択Sectionの差分を返します。</span></li><li><code>apply_import()</code><span>Backup後に候補Model全体をValidationし、成功時だけAtomic保存します。</span></li></ul></div>
+            <div class="file-reference-body"><ul class="function-list"><li><code>diff_values()</code><span>Nested設定をField Path単位のBefore/After差分へ変換します。</span></li><li><code>build_package() / export_package()</code><span>秘密情報とPC固有設定を除外し、Source ID付きSchema v2 PackageをAtomic保存します。</span></li><li><code>load_package() / preview_import()</code><span>Schema、Scope、許可Sectionを検証し、Portable Settingsだけの差分を返します。</span></li><li><code>identify_import()</code><span>SourceとTargetをID優先・名前Fallbackで照合し、更新、同名候補、Template、Legacyに分類します。</span></li><li><code>build_import_candidate()</code><span>Target IdentityとInstallation IDを保持した候補Modelを副作用なしで検証します。</span></li><li><code>apply_import()</code><span>互換APIとしてBackupとAtomic保存を行います。GUIは候補生成後にManagerとFolder Migratorを使います。</span></li></ul></div>
           </details>
 
           <details class="file-reference">

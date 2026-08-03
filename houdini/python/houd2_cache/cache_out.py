@@ -34,9 +34,26 @@ def update_preview(kwargs: dict[str, Any]) -> None:
         paths = build_cache_paths(context, name, version)
         _set(node, "resolved_geo_root", str(context.geo_root))
         _set(node, "resolved_cache_path", str(paths.version_root))
-        _set(node, "status", "Ready to cache")
+        manifest_path = str(node.evalParm("manifest_path") or "")
+        completed = (
+            load_manifest(Path(manifest_path))
+            if manifest_path and Path(manifest_path).is_file()
+            else None
+        )
+        is_complete = bool(completed and completed.get("status") == "complete")
+        completed_name = str(completed.get("name", name)) if completed else name
+        completed_version = (
+            int(completed.get("version", version)) if completed else version
+        )
+        _set(
+            node, "status",
+            f"Complete: {completed_name} v{completed_version:03d}"
+            if is_complete else "Ready to cache",
+        )
+        _set_node_color(node, "green" if is_complete else "red")
     except Exception as exc:
         _set(node, "status", str(exc))
+        _set_node_color(node, "red")
 
 
 def open_cache_folder(kwargs: dict[str, Any]) -> None:
@@ -124,12 +141,14 @@ def _save(node: Any, current_only: bool) -> None:
         _set(node, "cache_id", str(manifest["cache_id"]))
         _set(node, "resolved_version", version)
         _set(node, "status", f"Complete: {name} v{version:03d} ({len(files)} files)")
+        _set_node_color(node, "green")
         node.cook(force=True)
         _refresh_catalog(context)
     except Exception as exc:
         if paths.staging_root.exists():
             shutil.rmtree(paths.staging_root, ignore_errors=True)
         _set(node, "status", f"ERROR: {exc}")
+        _set_node_color(node, "red")
         raise
 
 
@@ -156,6 +175,19 @@ def _set(node: Any, name: str, value: object) -> None:
     parm = node.parm(name)
     if parm is not None:
         parm.set(value)
+
+
+def _set_node_color(node: Any, state: str) -> None:
+    try:
+        import hou
+
+        colors = {
+            "red": (0.65, 0.16, 0.12),
+            "green": (0.18, 0.55, 0.24),
+        }
+        node.setColor(hou.Color(colors[state]))
+    except Exception:
+        pass
 
 
 def _open_folder(path: Path) -> None:

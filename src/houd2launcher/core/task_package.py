@@ -20,7 +20,6 @@ from .path_resolver import PathResolver
 from .task_manager import TaskManager
 
 
-_CACHE_ROLES = {"geo_cache", "vdb_cache", "vdb", "sim", "alembic"}
 _SECRET_MARKERS = ("PASSWORD", "PASS", "TOKEN", "SECRET", "API_KEY", "CREDENTIAL")
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -90,6 +89,11 @@ class TaskPackageService:
         files: list[TaskPackageFile] = []
         try:
             staging_task.mkdir(parents=True)
+            try:
+                geo_root = self.resolver.resolve_role(project, task, "geo_cache")
+                (staging_task / geo_root.relative_to(source_root)).mkdir(parents=True, exist_ok=True)
+            except (KeyError, ValueError):
+                pass
             for source in source_root.rglob("*"):
                 if source.is_symlink():
                     raise PathSafetyError(f"Task Package cannot contain links: {source}")
@@ -204,7 +208,7 @@ class TaskPackageService:
         excluded: list[tuple[str, Path]] = []
         for folder in project.folders:
             role = folder.role.casefold()
-            if folder.enabled and ("cache" in role or role in _CACHE_ROLES):
+            if folder.enabled and role == "geo_cache":
                 excluded.append(
                     (folder.role, self.resolver.resolve_houdini_folder(project, task, folder.relative_path))
                 )

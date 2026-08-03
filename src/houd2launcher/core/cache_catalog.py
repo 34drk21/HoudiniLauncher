@@ -11,6 +11,7 @@ from .models import ProjectSettings, TaskSettings
 from .path_resolver import PathResolver
 from .project_manager import ProjectManager
 from .task_manager import TaskManager
+from .cache_exchange import CacheExchangeService
 
 
 _CACHE_SUFFIXES = (
@@ -32,10 +33,14 @@ class CacheCatalogService:
         projects: ProjectManager,
         tasks: TaskManager,
         resolver: PathResolver,
+        cache_exchange: CacheExchangeService | None = None,
+        exchange_paths: object | None = None,
     ) -> None:
         self.projects = projects
         self.tasks = tasks
         self.resolver = resolver
+        self.cache_exchange = cache_exchange
+        self.exchange_paths = exchange_paths
         self._cache: dict[tuple[str, str], tuple[float, list[dict[str, object]]]] = {}
         self._lock = threading.RLock()
 
@@ -70,9 +75,56 @@ class CacheCatalogService:
         project = self._project(project_id)
         task = self._task(project, task_id)
         records = self._scan(project, task)
+        records.extend(self._published(project, task, records))
         with self._lock:
             self._cache[key] = (time.monotonic(), records)
         return [dict(item) for item in records]
+
+    def _published(
+        self, project: ProjectSettings, task: TaskSettings,
+        local: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        if self.cache_exchange is None or not callable(self.exchange_paths):
+            return []
+        root_value = self.exchange_paths().get(project.project_id, "")
+        if not root_value:
+            return []
+        local_ids = {str(item["cache_id"]) for item in local}
+        geo_root = self.resolver.resolve_role(project, task, "geo_cache")
+        result: list[dict[str, object]] = []
+        for published in self.cache_exchange.discover(Path(root_value)):
+            manifest = published.manifest
+            if manifest.project_id != project.project_id or manifest.task_id != task.task_id:
+                continue
+            if manifest.cache_id in local_ids:
+                for item in local:
+                    if str(item["cache_id"]) == manifest.cache_id:
+                        item["published"] = True
+                continue
+            source = manifest.source_manifest
+            frame = source.get("frame", {}) if isinstance(source.get("frame"), dict) else {}
+            creator = source.get("creator", {}) if isinstance(source.get("creator"), dict) else {}
+            storage = source.get("storage", {}) if isinstance(source.get("storage"), dict) else {}
+            result.append({
+                "cache_id": manifest.cache_id, "project_id": project.project_id,
+                "project_name": project.name, "task_id": task.task_id,
+                "task_name": task.name, "cache_name": manifest.cache_name,
+                "version": manifest.version,
+                "cache_type": str(source.get("cache_type", "geo_sequence")),
+                "geo_root": str(geo_root), "file_pattern": str(source.get("file_pattern", "")),
+                "manifest_path": "", "description": str(source.get("description", "")),
+                "created_at": str(source.get("created_at", manifest.published_at)),
+                "creator_user_id": str(creator.get("user_id", "")),
+                "creator_display_name": str(creator.get("display_name", "Unknown")),
+                "creator_machine_id": str(creator.get("machine_id", "")),
+                "frame_start": int(frame.get("start", 0)), "frame_end": int(frame.get("end", 0)),
+                "frame_step": int(frame.get("step", 1)), "frame_mode": str(frame.get("mode", "range")),
+                "fps": float(frame.get("fps", 0.0)), "file_count": int(storage.get("file_count", len(manifest.files))),
+                "size_bytes": int(storage.get("size_bytes", sum(item.size for item in manifest.files))),
+                "status": "published", "loadable": False, "legacy": not bool(source),
+                "version_root": "", "published": True,
+            })
+        return result
 
     def versions(
         self, project_id: str, task_id: str, cache_name: str

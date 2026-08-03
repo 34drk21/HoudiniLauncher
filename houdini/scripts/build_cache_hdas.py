@@ -44,6 +44,9 @@ def version_menu(kwargs):
 def selection_changed(kwargs):
     return _impl.selection_changed(kwargs)
 
+def initialize(kwargs):
+    return _impl.initialize(kwargs)
+
 def refresh_catalog(kwargs):
     return _impl.refresh_catalog(kwargs)
 
@@ -246,6 +249,15 @@ def _cache_in_parameters() -> hou.ParmTemplateGroup:
     group = hou.ParmTemplateGroup()
 
     load = hou.FolderParmTemplate("load_folder", "Load")
+    refresh = _button("refresh_catalog", "Refresh Catalog", _callback("refresh_catalog"))
+    reload_button = _button("reload_cache", "Reload Cache", _callback("reload_cache"))
+    open_button = _button("open_cache_folder", "Open Cache Folder", _callback("open_cache_folder"))
+    sync = _button(
+        "sync_to_local", "Open Import Tab", _callback("sync_to_local"),
+        "Opens HouD2Launcher at the published Cache so it can be imported locally.",
+    )
+    for parm in _join(refresh, reload_button, open_button, sync):
+        load.addParmTemplate(parm)
     load.addParmTemplate(_readonly("local_status", "Status", "Select a Cache"))
     callback = _callback("selection_changed")
 
@@ -256,24 +268,16 @@ def _cache_in_parameters() -> hou.ParmTemplateGroup:
 
     selection = _collapsible("cache_selection", "Cache Version", expanded=True)
     selection.addParmTemplate(_dynamic_menu("cache_name", "Cache", "hou.phm().cache_menu(kwargs)", callback))
-    selection.addParmTemplate(_menu("version_mode", "Version", ("latest", "specific"), ("Latest", "Specific"), callback=callback))
+    selection.addParmTemplate(_menu(
+        "version_mode", "Version", ("latest", "specific", "published"),
+        ("Latest", "Specific", "Published"), callback=callback,
+    ))
     specific = _dynamic_menu("specific_version", "Specific Version", "hou.phm().version_menu(kwargs)", callback)
-    specific.setConditional(hou.parmCondType.DisableWhen, "{ version_mode == latest }")
+    specific.setConditional(hou.parmCondType.DisableWhen, "{ version_mode != specific }")
     selection.addParmTemplate(specific)
     selection.addParmTemplate(_menu("load_mode", "Load Mode", ("full", "delayed"), ("Full Geometry", "Packed Disk Primitive"), callback=callback))
     load.addParmTemplate(selection)
 
-    actions = _collapsible("load_actions", "Actions", expanded=True)
-    refresh = _button("refresh_catalog", "Refresh Catalog", _callback("refresh_catalog"))
-    reload_button = _button("reload_cache", "Reload Cache", _callback("reload_cache"))
-    open_button = _button("open_cache_folder", "Open Cache Folder", _callback("open_cache_folder"))
-    sync = _button(
-        "sync_to_local", "Sync to Local", _callback("sync_to_local"),
-        "Requests the Launcher sync provider. Network transfer is unavailable until a provider is configured.",
-    )
-    for parm in _join(refresh, reload_button, open_button, sync):
-        actions.addParmTemplate(parm)
-    load.addParmTemplate(actions)
     group.append(load)
 
     info = hou.FolderParmTemplate("info_folder", "Info")
@@ -382,7 +386,8 @@ def _build_cache_in(parent: hou.Node, library: Path) -> hou.Node:
         "OnCreated",
         "node=kwargs['node']\n"
         "node.parm('project_id').setExpression('$HOUD2_PROJECT_ID', hou.exprLanguage.Hscript)\n"
-        "node.parm('task_id').setExpression('$HOUD2_TASK_ID', hou.exprLanguage.Hscript)",
+        "node.parm('task_id').setExpression('$HOUD2_TASK_ID', hou.exprLanguage.Hscript)\n"
+        "node.hdaModule().initialize(kwargs)",
     )
     definition.setExtraFileOption("OnCreated/IsPython", True)
     definition.updateFromNode(asset)

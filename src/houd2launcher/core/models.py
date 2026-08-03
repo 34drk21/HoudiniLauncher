@@ -51,7 +51,7 @@ class FrameSettings(StrictModel):
 
     start: int = 1001
     end: int = 1100
-    fps: float = Field(default=24.0, gt=0)
+    fps: float = Field(default=60.0, gt=0)
     sim_start: int = 1001
 
     @model_validator(mode="after")
@@ -136,6 +136,7 @@ class ProjectSettings(StrictModel):
     search_paths: SearchPathSettings = Field(default_factory=SearchPathSettings)
     naming: NamingSettings = Field(default_factory=NamingSettings)
     houdini: HoudiniPolicy = Field(default_factory=HoudiniPolicy)
+    sdm_default_folder_roles: list[str] | None = None
     created_at: datetime = Field(default_factory=utc_now)
     modified_at: datetime = Field(default_factory=utc_now)
 
@@ -274,6 +275,7 @@ class LauncherSettings(StrictModel):
     maximum_log_files: int = Field(default=10, ge=1, le=100)
     last_project_id: str | None = None
     last_task_id: str | None = None
+    cache_exchange_paths: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("launcher_environment")
     @classmethod
@@ -285,7 +287,20 @@ class SettingsPackage(StrictModel):
     """Portable settings package for project or task import/export."""
 
     format: Literal["houd2.settings_package"] = "houd2.settings_package"
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
     scope: Literal["project", "task"]
+    source_id: str | None = None
+    source_name: str | None = None
+    source_project_id: str | None = None
+    source_project_name: str | None = None
     exported_at: datetime = Field(default_factory=utc_now)
     sections: dict[str, object]
+
+    @model_validator(mode="after")
+    def validate_source_identity(self) -> "SettingsPackage":
+        if self.schema_version == 2:
+            if not self.source_id or not self.source_name:
+                raise ValueError("Settings package v2 requires source ID and name")
+            if self.scope == "task" and not self.source_project_id:
+                raise ValueError("Task settings package v2 requires source Project ID")
+        return self

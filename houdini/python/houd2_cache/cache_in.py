@@ -37,7 +37,8 @@ def cache_menu(kwargs: dict[str, Any]) -> list[str]:
     try:
         records = _records(node)
         names = sorted({str(item["cache_name"]) for item in records}, key=str.casefold)
-        result: list[str] = []
+        _defer_cache_default(node, names)
+        result: list[str] = ["", "Select a Cache..."]
         for name in names:
             result.extend((name, name))
         return result
@@ -60,13 +61,20 @@ def version_menu(kwargs: dict[str, Any]) -> list[str]:
 
 
 def selection_changed(kwargs: dict[str, Any]) -> None:
-    update_info(kwargs["node"])
+    node = kwargs["node"]
+    try:
+        _ensure_cache_selection(node)
+    except Exception as exc:
+        _set(node, "local_status", f"INVALID: {exc}")
+        return
+    update_info(node)
 
 
 def refresh_catalog(kwargs: dict[str, Any]) -> None:
     node = kwargs["node"]
     try:
         _client(node).refresh()
+        _ensure_cache_selection(node)
         _set(node, "local_status", "Catalog refreshed")
         update_info(node)
     except Exception as exc:
@@ -87,6 +95,7 @@ def sync_to_local(kwargs: dict[str, Any]) -> None:
     try:
         record = resolve_record(node)
         _client(node).sync(str(record["cache_id"]))
+        _set(node, "local_status", "IMPORT REQUESTED - finish the import in HouD2Launcher")
     except Exception as exc:
         _set(node, "local_status", f"Sync unavailable: {exc}")
 
@@ -101,22 +110,35 @@ def open_cache_folder(kwargs: dict[str, Any]) -> None:
 
 def resolved_file(node: Any) -> str:
     try:
-        record = resolve_record(node)
+        records = _versions(node)
+        record = resolve_record(node, records)
         path = _resolved_pattern(record)
+        current = _expand_frame(path, record)
         _set(node, "resolved_geo_root", str(record["geo_root"]))
         _set(node, "resolved_file_pattern", str(path).replace("\\", "/"))
-        return str(_expand_frame(path, record)).replace("\\", "/")
+        _set_node_color(node, _cache_color_state(record, records, current.is_file()))
+        return str(current).replace("\\", "/")
     except Exception as exc:
         _set(node, "local_status", f"INVALID: {exc}")
+        _set_node_color(node, "red")
         return ""
 
 
 def update_info(node: Any) -> None:
     try:
-        record = resolve_record(node)
+        records = _versions(node)
+        record = resolve_record(node, records)
         pattern = _resolved_pattern(record)
         current = _expand_frame(pattern, record)
-        status = "READY" if current.is_file() else "MISSING"
+        color_state = _cache_color_state(record, records, current.is_file())
+        latest = max(int(item["version"]) for item in records)
+        status = (
+            "READY / LATEST" if color_state == "green"
+            else f"READY / v{int(record['version']):03d} (Latest v{latest:03d})"
+            if color_state == "yellow"
+            else "MISSING"
+        )
+        _set_node_color(node, color_state)
         _set(node, "resolved_cache_id", str(record["cache_id"]))
         _set(node, "resolved_geo_root", str(record["geo_root"]))
         _set(node, "resolved_file_pattern", str(pattern).replace("\\", "/"))
@@ -139,14 +161,42 @@ def update_info(node: Any) -> None:
         _set(node, "info_source", f"{record.get('project_name', '')} / {record.get('task_name', '')}")
     except Exception as exc:
         _set(node, "local_status", f"INVALID: {exc}")
+        _set_node_color(node, "red")
 
 
-def resolve_record(node: Any) -> dict[str, Any]:
-    records = _versions(node)
+def initialize(kwargs: dict[str, Any]) -> None:
+    """Commit real dynamic-menu tokens after a newly created node initializes."""
+    node = kwargs["node"]
+    _set_node_color(node, "red")
+    try:
+        _ensure_cache_selection(node)
+        update_info(node)
+    except Exception as exc:
+        _set(node, "local_status", f"INVALID: {exc}")
+
+
+def resolve_record(
+    node: Any, records: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    records = records if records is not None else _versions(node)
+    mode = int(node.evalParm("version_mode"))
+    if mode == 2:
+        published = [item for item in records if bool(item.get("published")) or item.get("status") == "published"]
+        if not published:
+            raise RuntimeError("No Published Cache Version is available")
+        selected_record = max(published, key=lambda item: int(item["version"]))
+        if not bool(selected_record.get("loadable")):
+            _request_import_once(node, selected_record)
+            raise RuntimeError("IMPORT REQUIRED: HouD2Launcher Import tab was opened")
+        return selected_record
     loadable = [item for item in records if bool(item.get("loadable"))]
     if not loadable:
+        published = [item for item in records if bool(item.get("published"))]
+        if published:
+            _request_import_once(node, max(published, key=lambda item: int(item["version"])))
+            raise RuntimeError("IMPORT REQUIRED: Cache exists only in the Published folder")
         raise RuntimeError("No loadable Cache Version is available")
-    if int(node.evalParm("version_mode")) == 0:
+    if mode == 0:
         return max(loadable, key=lambda item: int(item["version"]))
     selected = int(_value(node, "specific_version") or 0)
     match = next((item for item in records if int(item["version"]) == selected), None)
@@ -155,6 +205,17 @@ def resolve_record(node: Any) -> dict[str, Any]:
     if not bool(match.get("loadable")):
         raise RuntimeError(f"Cache Version v{selected:03d} is {match.get('status', 'invalid')}")
     return match
+
+
+def _request_import_once(node: Any, record: dict[str, Any]) -> None:
+    cache_id = str(record.get("cache_id", ""))
+    if not cache_id or node.userData("houd2_import_requested") == cache_id:
+        return
+    try:
+        _client(node).sync(cache_id)
+        node.setUserData("houd2_import_requested", cache_id)
+    except Exception:
+        pass
 
 
 def _records(node: Any) -> list[dict[str, Any]]:
@@ -178,6 +239,69 @@ def _versions(node: Any) -> list[dict[str, Any]]:
     if not cache_name:
         raise RuntimeError("Select a Cache")
     return [item for item in _records(node) if str(item["cache_name"]).casefold() == cache_name.casefold()]
+
+
+def _ensure_cache_selection(node: Any) -> None:
+    if node.userData("houd2_selecting_cache") == "1":
+        return
+    node.setUserData("houd2_selecting_cache", "1")
+    try:
+        records = _records(node)
+        names = sorted({str(item["cache_name"]) for item in records}, key=str.casefold)
+        if not names:
+            raise RuntimeError("No Caches are available for the selected Task")
+        current = _value(node, "cache_name")
+        selected_name = next(
+            (name for name in names if name.casefold() == current.casefold()), names[0]
+        )
+        if current != selected_name:
+            _set(node, "cache_name", selected_name)
+        versions = [
+            item for item in records
+            if str(item["cache_name"]).casefold() == selected_name.casefold()
+        ]
+        available = sorted(
+            {int(item["version"]) for item in versions}, reverse=True
+        )
+        if available:
+            selected_version = int(_value(node, "specific_version") or 0)
+            if selected_version not in available:
+                _set(node, "specific_version", str(available[0]))
+    finally:
+        node.destroyUserData("houd2_selecting_cache")
+
+
+def _defer_cache_default(node: Any, names: list[str]) -> None:
+    if not names or any(name.casefold() == _value(node, "cache_name").casefold() for name in names):
+        return
+    try:
+        import hou
+
+        marker = "houd2_cache_default_pending"
+        if node.userData(marker) == "1":
+            return
+        node.setUserData(marker, "1")
+
+        def apply_default() -> None:
+            try:
+                if node is not None:
+                    _ensure_cache_selection(node)
+                    update_info(node)
+            finally:
+                if node is not None:
+                    try:
+                        node.destroyUserData(marker)
+                    except Exception:
+                        pass
+                try:
+                    hou.ui.removeEventLoopCallback(apply_default)
+                except Exception:
+                    pass
+
+        hou.ui.addEventLoopCallback(apply_default)
+    except Exception:
+        # Hython and headless tests do not run a UI event loop.
+        pass
 
 
 def _client(node: Any) -> CatalogClient:
@@ -342,6 +466,29 @@ def _set(node: Any, name: str, value: object) -> None:
             parm.set(value)
         except Exception:
             pass
+
+
+def _cache_color_state(
+    record: dict[str, Any], records: list[dict[str, Any]], file_exists: bool
+) -> str:
+    if not file_exists or not records:
+        return "red"
+    latest = max(int(item["version"]) for item in records)
+    return "green" if int(record["version"]) == latest else "yellow"
+
+
+def _set_node_color(node: Any, state: str) -> None:
+    try:
+        import hou
+
+        colors = {
+            "red": (0.65, 0.16, 0.12),
+            "green": (0.18, 0.55, 0.24),
+            "yellow": (0.78, 0.58, 0.12),
+        }
+        node.setColor(hou.Color(colors[state]))
+    except Exception:
+        pass
 
 
 def _format_size(value: int) -> str:

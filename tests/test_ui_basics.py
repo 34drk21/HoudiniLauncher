@@ -18,7 +18,10 @@ from houd2launcher.core.models import (
     TaskSettings,
 )
 from houd2launcher.core.path_resolver import PathResolver
+from houd2launcher.settings.exporter import build_package
+from houd2launcher.settings.importer import identify_import, preview_import
 from houd2launcher.ui.dialogs.hip_open_dialog import HipOpenDialog
+from houd2launcher.ui.dialogs.settings_import_dialog import SettingsImportDialog
 from houd2launcher.ui.panels.project_panel import ProjectPanel
 from houd2launcher.ui.panels.task_details_panel import TaskDetailsPanel
 from houd2launcher.ui.panels.task_panel import TaskPanel
@@ -130,4 +133,48 @@ def test_cache_view_is_parent_child_tree_and_search_keeps_hierarchy(tmp_path: Pa
     assert tree.topLevelItem(0).childCount() == 1
     assert tree.topLevelItem(0).child(0).text(1) == "v002"
     panel.deleteLater()
+    app.processEvents()
+
+
+def test_task_overview_populates_expression_environment(tmp_path: Path) -> None:
+    app = _app()
+    resolver = PathResolver()
+    project = ProjectSettings(name="Demo", project_root=tmp_path / "Demo")
+    task = TaskSettings(project_id=project.project_id, name="fire")
+    panel = TaskDetailsPanel(resolver)
+
+    panel.set_task(
+        project,
+        task,
+        [],
+        [{"created_at": "2026-08-03", "event_type": "test", "details": {}}],
+        {"TASK_NAME": "fire", "SHOT_FRAME_START": "1001"},
+    )
+
+    assert panel.expression_table.rowCount() == 2
+    values = {
+        panel.expression_table.item(row, 0).text(): panel.expression_table.item(row, 1).text()
+        for row in range(panel.expression_table.rowCount())
+    }
+    assert values == {"SHOT_FRAME_START": "1001", "TASK_NAME": "fire"}
+    assert "Frame:" in panel.settings_summary.text()
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_settings_update_dialog_defaults_to_replace_section(tmp_path: Path) -> None:
+    app = _app()
+    project = ProjectSettings(name="Demo", project_root=tmp_path / "Demo")
+    incoming = project.model_copy(deep=True)
+    incoming.description = "Updated settings"
+    package = build_package(incoming)
+    identity = identify_import(project, package)
+    dialog = SettingsImportDialog(
+        package, preview_import(project, package), identity
+    )
+
+    assert identity.status == "exact"
+    assert dialog.mode.currentData() == "replace_section"
+    assert dialog.selected_sections() == {"description"}
+    dialog.deleteLater()
     app.processEvents()

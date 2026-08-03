@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .core.config import atomic_write_model, launcher_home, load_model
 from .core.cache_manager import CacheManager
+from .core.cache_exchange import CacheExchangeService
 from .core.cache_catalog import CacheCatalogService
 from .core.environment import EnvironmentResolver
 from .core.filesystem_reconciler import FilesystemReconciler
@@ -18,6 +19,7 @@ from .core.path_resolver import PathResolver
 from .core.project_manager import ProjectManager
 from .core.task_manager import TaskManager
 from .core.task_package import TaskPackageService
+from .core.sdm_package import SdmPackageService
 from .database.connection import Database
 from .database.migrations import migrate
 from .database.repositories import LauncherRepository
@@ -45,8 +47,10 @@ class ApplicationContext:
     hips: HipManager
     houdini: HoudiniLauncher
     caches: CacheManager
+    cache_exchange: CacheExchangeService
     cache_scanner: HoudiniCacheScanner
     task_packages: TaskPackageService
+    sdm_packages: SdmPackageService
     cache_catalog: CacheCatalogService
     catalog_api: CatalogApiServer
 
@@ -77,7 +81,11 @@ class ApplicationContext:
         projects = ProjectManager(repository, resolver)
         folder_migrator = FolderStructureMigrator(resolver)
         filesystem = FilesystemReconciler(task_manager, hip_manager, resolver)
-        catalog = CacheCatalogService(projects, task_manager, resolver)
+        cache_exchange = CacheExchangeService(resolver)
+        catalog = CacheCatalogService(
+            projects, task_manager, resolver, cache_exchange=cache_exchange,
+            exchange_paths=lambda: settings.cache_exchange_paths,
+        )
         catalog_api = CatalogApiServer(catalog)
         catalog_api.start()
         return cls(
@@ -103,6 +111,7 @@ class ApplicationContext:
                 api_token=catalog_api.token,
             ),
             caches=cache_manager,
+            cache_exchange=cache_exchange,
             cache_scanner=HoudiniCacheScanner(
                 environment,
                 cache_manager,
@@ -111,6 +120,7 @@ class ApplicationContext:
                 api_token=catalog_api.token,
             ),
             task_packages=TaskPackageService(resolver, task_manager),
+            sdm_packages=SdmPackageService(resolver),
             cache_catalog=catalog,
             catalog_api=catalog_api,
         )

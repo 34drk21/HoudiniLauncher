@@ -233,6 +233,7 @@ class ProjectSettingsDialog(QDialog):
         layout.addWidget(self.tabs)
         self._general_tab(project)
         self._folders_tab(project)
+        self._sdm_tab(project)
         self._environment_tab(project)
         self._houdini_tab(project)
         self._paths_tab(project)
@@ -261,7 +262,9 @@ class ProjectSettingsDialog(QDialog):
         self.default_end.setValue(project.default_frames.end)
         self.default_fps = QDoubleSpinBox()
         self.default_fps.setRange(0.001, 1000)
-        self.default_fps.setValue(project.default_frames.fps)
+        self.default_fps.setValue(
+            60.0 if project.default_frames.fps == 24.0 else project.default_frames.fps
+        )
         self.project_name.setPlaceholderText("例: MyGame_FX")
         self.project_description.setPlaceholderText("例: Project共有ルールや目的")
         add_helped_row(form, "Project name", self.project_name, "表示名です。Project IDと保存先は変更されません。")
@@ -308,6 +311,29 @@ class ProjectSettingsDialog(QDialog):
     def _environment_tab(self, project: ProjectSettings) -> None:
         self.environment_editor = KeyValueTable(project.environment)
         self.tabs.addTab(self.environment_editor, "Environment")
+
+    def _sdm_tab(self, project: ProjectSettings) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        help_label = QLabel(
+            "Choose the Houdini folder roles included by default in to SDM2.0. "
+            "HIP files are always included, and Geo Cache Versions are selected for each export."
+        )
+        help_label.setWordWrap(True)
+        help_label.setObjectName("FieldHelp")
+        layout.addWidget(help_label)
+        defaults = project.sdm_default_folder_roles
+        enabled = set(defaults if defaults is not None else [item.role for item in project.folders if item.enabled])
+        self.sdm_role_checks: dict[str, QCheckBox] = {}
+        for folder in project.folders:
+            if not folder.enabled or folder.role == "geo_cache":
+                continue
+            checkbox = QCheckBox(f"{folder.display_name}  ({folder.relative_path})")
+            checkbox.setChecked(folder.role in enabled)
+            self.sdm_role_checks[folder.role] = checkbox
+            layout.addWidget(checkbox)
+        layout.addStretch()
+        self.tabs.addTab(page, "to SDM2.0")
 
     def _houdini_tab(self, project: ProjectSettings) -> None:
         page = QWidget()
@@ -399,6 +425,9 @@ class ProjectSettingsDialog(QDialog):
                     sim_start=self.default_start.value(),
                 ),
                 "folders": self._folders(),
+                "sdm_default_folder_roles": [
+                    role for role, checkbox in self.sdm_role_checks.items() if checkbox.isChecked()
+                ],
                 "environment": self.environment_editor.values(),
                 "search_paths": SearchPathSettings(
                     **{

@@ -18,6 +18,7 @@ class CatalogApiServer:
         self.token = secrets.token_urlsafe(32)
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self.open_import_callback = None
 
     @property
     def url(self) -> str:
@@ -30,6 +31,7 @@ class CatalogApiServer:
             return
         catalog = self.catalog
         token = self.token
+        owner = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
@@ -51,10 +53,12 @@ class CatalogApiServer:
                     self._json(HTTPStatus.OK, {"status": "refreshed"})
                     return
                 if path.startswith("/v1/caches/") and path.endswith("/sync"):
-                    self._json(
-                        HTTPStatus.NOT_IMPLEMENTED,
-                        {"status": "unavailable", "message": "Cache sync provider is not configured"},
-                    )
+                    cache_id = unquote(path.split("/")[3])
+                    if owner.open_import_callback is None:
+                        self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"message": "Launcher UI is unavailable"})
+                    else:
+                        owner.open_import_callback(cache_id)
+                        self._json(HTTPStatus.ACCEPTED, {"status": "open_import"})
                     return
                 self._json(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint"})
 

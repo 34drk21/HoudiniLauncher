@@ -35,7 +35,9 @@ Included:
 - Selected-HIP cache reference scanning through `hython`
 - Full `geo_cache` inventory grouped by Cache and Version, with HIP usage colors
 - Cache search, filters, size sorting, and guarded permanent Version deletion
-- Checksum-verified, cache-free Task Package folder export/import with Preview
+- Checksum-verified Task Package export/import; only `geo_cache` contents are omitted
+- Shared-folder Cache Publish/Import with SHA-256 validation
+- SDM2.0 delivery with mandatory HIP files and selectable folders/cache versions
 - Launcher-managed expression variables shown in each Task Overview
 - FPS and global/playback frame ranges applied after a HIP opens
 - `houd2::cache_out::1.0` HDA with atomic Version publishing and metadata Marker
@@ -50,8 +52,9 @@ Not included in this project:
 - Houdini shelf tools or Python panels
 - Render farm integration
 
-Network cache synchronization remains a future provider. Cache In never performs
-network transfers during a SOP cook.
+Cache exchange uses a user-selected shared folder. Cache In never performs
+network transfers during a SOP cook; a missing Published Version opens the
+Launcher's Import tab.
 
 ## Houdini Cache HDAs
 
@@ -70,9 +73,14 @@ with a Commercial Houdini FX or Core license.
 
 `HouD2 Cache In` has no input. Choose Project, Task, and Cache from the Catalog.
 Version defaults to `Latest`; switch it to `Specific` to choose an older
-Version. The Cache Information tab shows its creator, creation time, frame
+Version or `Published` to request import of a shared Version. The Cache
+Information tab shows its creator, creation time, frame
 range, size, source Task, and resolved local path. Another Project or Task is
 read directly from its registered local Geo Root.
+
+Cache Out nodes are red until a Cache Version completes, then green. Cache In
+nodes are green when reading the latest available Version, yellow when reading
+an older Version, and red when unresolved or missing.
 
 ### Building the HDA Library
 
@@ -134,14 +142,52 @@ for paths outside `geo_cache`.
 
 Use `Export Task Package...` from a Task's context menu. The resulting
 `{task}_houd2package` folder contains HIPs, HouD2 metadata, thumbnails, and
-non-cache Task files. Cache Roles and legacy `.houd2/trash/caches` content are
-excluded. `manifest.json` records every packaged file's SHA-256 checksum.
+all other Task files. Only configured `geo_cache` contents and legacy
+`.houd2/trash/caches` content are excluded; the empty geo folder is retained.
+`manifest.json` records every packaged file's SHA-256 checksum.
 
 Use `Import Task Package...` from a target Project's context menu. Import first
 validates paths and checksums, then previews size, excluded Roles, and portable
 Project setting differences. Existing Project settings are never overwritten.
 Name collisions create `{task}_copy`, assign a new Task ID, and rename managed
 HIP files and metadata to the imported Task name.
+
+## Settings Import / Update
+
+Project and Task settings exports use Settings Package schema v2. Packages
+record the source ID and name so imports can distinguish an update from a
+template import. An exact ID match requires confirmation; a same-name package
+with a different ID requires typing the target name before it can overwrite
+portable settings. Schema v1 packages remain importable and are shown as
+unverified legacy packages.
+
+Portable Project settings include description, frame defaults, folder Roles,
+environment, search paths, naming, Houdini policy, and SDM2.0 defaults.
+Portable Task settings include description, status, owner, frames, and
+environment. Target IDs, names, roots, and PC-specific Houdini Installation
+IDs are always preserved.
+
+When imported Project settings change Folder Structure, the same migration
+preview and safety checks used by Project Settings are applied to every Task.
+New auto-create Roles create folders, changed paths move existing Role folders,
+and removed or disabled Role folders are retained. Any path conflict blocks
+both the settings update and filesystem migration.
+
+## Cache Publish / Import
+
+Set `Publish / Import Path` at the top of the Caches or Import tab. It is
+remembered per Project. Right-click a local Cache or Version and choose
+`Publish this Cache`; right-click a shared Version and choose `Import this
+Cache`. Import restores `houdini/geo/<cache>/v###`. Removing the published copy
+is enabled by default and happens only after local checksum verification.
+During Import, the status bar shows a byte-based percentage across source
+validation, local copying, and checksum verification.
+
+## SDM2.0
+
+Project Settings > `to SDM2.0` controls default included folder Roles. A Task's
+`to SDM2.0...` action adds selectable Geo Cache Versions. All HIP files are
+always included under `{task_name}_SDM2.0/houdini/`.
 
 ## Requirements
 

@@ -91,6 +91,7 @@ class TaskPanel(QWidget):
     export_requested = Signal(object)
     import_requested = Signal(object)
     package_export_requested = Signal(object)
+    sdm_export_requested = Signal(object)
     delete_requested = Signal(object)
 
     def __init__(self, resolver: PathResolver, parent: QWidget | None = None) -> None:
@@ -247,6 +248,7 @@ class TaskPanel(QWidget):
             ("Import Task Settings", lambda: self.import_requested.emit(task)),
             ("Export Task Settings", lambda: self.export_requested.emit(task)),
             ("Export Task Package...", lambda: self.package_export_requested.emit(task)),
+            ("to SDM2.0...", lambda: self.sdm_export_requested.emit(task)),
             ("Set Thumbnail from Image", lambda: self.thumbnail_requested.emit()),
             ("Open in Explorer", lambda: self.reveal_requested.emit(task)),
             ("Rename Task", lambda: self.rename_requested.emit(task)),

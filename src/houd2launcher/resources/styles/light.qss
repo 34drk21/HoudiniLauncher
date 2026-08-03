@@ -7,6 +7,21 @@ QWidget {
 QMainWindow, QMenuBar, QMenu, QToolBar, QStatusBar {
     background: #ffffff;
 }
+
+QProgressBar {
+    min-height: 20px;
+    background: #ffffff;
+    color: #172019;
+    border: 1px solid #aeb9b2;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 600;
+}
+
+QProgressBar::chunk {
+    background: #3e8f59;
+    border-radius: 3px;
+}
 QMenuBar {
     border-bottom: 1px solid #d8ded7;
 }
