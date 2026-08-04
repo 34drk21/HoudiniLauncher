@@ -7,7 +7,13 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QIcon, QImage
-from PySide6.QtWidgets import QApplication, QToolButton, QTreeWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QToolButton,
+    QTreeWidget,
+)
 
 from houd2launcher.app import application_icon_path
 from houd2launcher.core.cache_manager import CacheRecord, CacheScanResult
@@ -244,3 +250,25 @@ def test_settings_update_dialog_defaults_to_replace_section(tmp_path: Path) -> N
     assert dialog.selected_sections() == {"description"}
     dialog.deleteLater()
     app.processEvents()
+
+
+def test_settings_import_dialog_apply_button_accepts_dialog(tmp_path: Path) -> None:
+    app = _app()
+    project = ProjectSettings(name="Demo", project_root=tmp_path / "Demo")
+    incoming = project.model_copy(deep=True)
+    incoming.description = "Updated settings"
+    package = build_package(incoming)
+    identity = identify_import(project, package)
+    dialog = SettingsImportDialog(
+        package, preview_import(project, package), identity
+    )
+
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+    apply_button = box.button(QDialogButtonBox.StandardButton.Apply)
+    assert apply_button is not None
+    apply_button.click()
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    dialog.deleteLater()
+    app.processEvents()
+
