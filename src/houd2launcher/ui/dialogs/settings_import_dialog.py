@@ -87,6 +87,9 @@ class SettingsImportDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Apply
         )
+        apply_button = buttons.button(QDialogButtonBox.StandardButton.Apply)
+        if apply_button is not None:
+            apply_button.clicked.connect(self.accept)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
