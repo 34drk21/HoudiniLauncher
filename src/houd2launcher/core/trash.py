@@ -1,9 +1,7 @@
-"""Utility to safely move files or directories to the system Recycle Bin / Trash."""
-
-from __future__ import annotations
-
-import sys
+import shutil
 import subprocess
+import sys
+from datetime import datetime
 from pathlib import Path
 
 from .exceptions import PathSafetyError
@@ -12,15 +10,15 @@ from .exceptions import PathSafetyError
 def send_to_trash(path: Path) -> None:
     """Move a file or directory to the OS Recycle Bin / Trash.
 
-    Raises FileNotFoundError if path does not exist.
-    Raises PathSafetyError or OSError if trashing fails.
+    If OS Recycle Bin is not supported on the target system or drive (e.g. network drives),
+    safely moves the item to a local hidden .trash folder to guarantee zero data loss.
     """
     resolved = path.resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Path does not exist: {path}")
 
     if sys.platform == "win32":
-        # Primary Windows method: win32com.shell SHFileOperation with FOF_ALLOWUNDO
+        # Try 1: win32com.shell SHFileOperation with FOF_ALLOWUNDO
         try:
             from win32com.shell import shell, shellcon  # type: ignore
 
@@ -43,7 +41,7 @@ def send_to_trash(path: Path) -> None:
         except Exception:
             pass
 
-        # Fallback Windows method: PowerShell Microsoft.VisualBasic.FileIO.FileSystem
+        # Try 2: PowerShell Microsoft.VisualBasic.FileIO.FileSystem SendToRecycleBin
         try:
             is_file = resolved.is_file()
             method = "DeleteFile" if is_file else "DeleteDirectory"
@@ -59,19 +57,47 @@ def send_to_trash(path: Path) -> None:
             )
             if res.returncode == 0 and not resolved.exists():
                 return
-            raise OSError(
-                f"PowerShell Recycle Bin failed with exit code {res.returncode}: {res.stderr or res.stdout}"
+        except Exception:
+            pass
+
+        # Try 3: PowerShell Shell.Application COM object
+        try:
+            parent_dir = str(resolved.parent)
+            item_name = resolved.name
+            cmd = (
+                f"$shell = New-Object -ComObject Shell.Application; "
+                f"$folder = $shell.Namespace('{parent_dir}'); "
+                f"$item = $folder.ParseName('{item_name}'); "
+                f"$item.InvokeVerb('delete')"
             )
-        except Exception as exc:
-            raise OSError(f"Failed to move '{resolved}' to Recycle Bin: {exc}") from exc
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", cmd],
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode == 0 and not resolved.exists():
+                return
+        except Exception:
+            pass
     else:
-        # macOS / Linux fallback: try send2trash
+        # Try send2trash for macOS / Linux
         try:
             import send2trash  # type: ignore
 
             send2trash.send2trash(str(resolved))
-            return
-        except ImportError:
+            if not resolved.exists():
+                return
+        except Exception:
             pass
 
-        raise OSError(f"Moving to trash is not supported on platform: {sys.platform}")
+    # Safety Fallback for Network Drives / Unsupported Systems:
+    # Move item into a hidden .trash folder in its parent directory so it is NEVER hard-deleted.
+    try:
+        trash_dir = resolved.parent / ".trash"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        destination = trash_dir / f"{resolved.name}_{timestamp}"
+        shutil.move(str(resolved), str(destination))
+    except Exception as exc:
+        raise OSError(f"Failed to safely move '{resolved}' to trash: {exc}") from exc
+

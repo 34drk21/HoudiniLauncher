@@ -34,10 +34,10 @@ class ProjectManager:
     def add_existing(self, project_root: Path) -> ProjectSettings:
         """Register an existing HouD2 project without modifying its files."""
         config_path = project_root.expanduser().resolve() / ".houd2" / "project.json"
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Project metadata missing: {config_path}")
         settings = load_model(config_path, ProjectSettings)
         existing = self.repository.list_projects(include_archived=True)
-        if any(item["project_id"] == settings.project_id for item in existing):
-            raise DuplicateRegistrationError(f"Project is already registered: {settings.name}")
         stale = self._stale_registration(existing, settings, config_path)
         if stale:
             self.repository.replace_project_registration(
@@ -47,10 +47,12 @@ class ProjectManager:
                 settings.project_root,
                 config_path,
             )
+            self.repository.set_project_archived(settings.project_id, False)
             return settings
         self.repository.upsert_project(
             settings.project_id, settings.name, settings.project_root, config_path
         )
+        self.repository.set_project_archived(settings.project_id, False)
         return settings
 
     def load(self, config_path: Path) -> ProjectSettings:

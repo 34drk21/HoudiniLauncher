@@ -79,7 +79,7 @@ def test_registered_repairs_stale_id_for_same_root_and_config(
     assert repository.history(replacement.project_id)[0]["event_type"] == "before_id_repair"
 
 
-def test_add_existing_repairs_stale_id_but_rejects_same_id(
+def test_add_existing_repairs_stale_id_and_allows_readd(
     project: ProjectSettings,
     repository: LauncherRepository,
     resolver: PathResolver,
@@ -92,8 +92,8 @@ def test_add_existing_repairs_stale_id_but_rejects_same_id(
     added = manager.add_existing(project.project_root)
 
     assert added.project_id == replacement.project_id
-    with pytest.raises(DuplicateRegistrationError, match="already registered"):
-        manager.add_existing(project.project_root)
+    readded = manager.add_existing(project.project_root)
+    assert readded.project_id == replacement.project_id
 
 
 def test_archived_project_is_hidden_until_requested(
