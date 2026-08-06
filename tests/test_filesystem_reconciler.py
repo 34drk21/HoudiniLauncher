@@ -85,3 +85,43 @@ def test_malformed_task_json_is_reported_without_overwrite(
     assert report.tasks == ()
     assert len(report.errors) == 1
     assert config.read_text(encoding="utf-8") == "not-json"
+
+
+def test_reconcile_repairs_task_project_id(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    ProjectManager(repository, resolver).create(project)
+    reconciler = _reconciler(repository, resolver)
+    (project.project_root / "smoke").mkdir()
+    task = reconciler.adopt_task(project, "smoke", "QA")
+
+    # Change task project_id in task.json to simulate an imported/old project ID
+    config_path = resolver.resolve_task_metadata_path(project, task)
+    task.project_id = "old-project-id"
+    atomic_write_model(config_path, task)
+
+    # Reconciling should repair project_id and load the task cleanly
+    report = reconciler.reconcile(project)
+    assert len(report.tasks) == 1
+    assert report.tasks[0].name == "smoke"
+    assert report.tasks[0].project_id == project.project_id
+
+
+def test_reconcile_autoadopts_folders_with_houdini_or_hip(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    ProjectManager(repository, resolver).create(project)
+    reconciler = _reconciler(repository, resolver)
+
+    # Folder with houdini subdirectory
+    existing_folder = project.project_root / "existing_shot"
+    (existing_folder / "houdini").mkdir(parents=True)
+    (existing_folder / "houdini" / "existing_v001.hip").write_bytes(b"hip")
+
+    report = reconciler.reconcile(project)
+    assert any(task.name == "existing_shot" for task in report.tasks)
+

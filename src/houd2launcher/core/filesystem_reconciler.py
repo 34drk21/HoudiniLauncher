@@ -45,8 +45,13 @@ class FilesystemReconciler:
             if not config.is_file():
                 try:
                     validate_filename_component(candidate.name, "Task name")
-                    candidates.append(candidate.name)
-                except ValueError as exc:
+                    if (candidate / "houdini").is_dir() or any(candidate.glob("*.hip*")):
+                        task = self.adopt_task(project, candidate.name, "System")
+                        tasks.append(task)
+                        hip_count += len(self.hips.list_hips(project, task))
+                    else:
+                        candidates.append(candidate.name)
+                except Exception as exc:
                     errors.append(f"{candidate.name}: {exc}")
                 continue
             try:

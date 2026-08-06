@@ -64,10 +64,11 @@ class TaskManager:
         return task
 
     def load(self, project: ProjectSettings, config_path: Path) -> TaskSettings:
-        """Load task JSON and refresh its SQLite index."""
+        """Load task JSON and refresh its SQLite index, repairing project_id if needed."""
         task = load_model(config_path, TaskSettings)
         if task.project_id != project.project_id:
-            raise ValueError("Task belongs to a different project")
+            task.project_id = project.project_id
+            atomic_write_model(config_path, task)
         self._index(project, task)
         return task
 
