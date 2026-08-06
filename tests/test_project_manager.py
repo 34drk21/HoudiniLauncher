@@ -140,3 +140,24 @@ def test_delete_project_rejects_mismatched_canonical_metadata(
     with pytest.raises(ValueError, match="does not match"):
         manager.delete_permanently(project)
     assert project.project_root.is_dir()
+
+
+def test_delete_project_blocks_if_child_or_shared_project_exists(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+    tmp_path: Path,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+
+    # Sub-project inside project root
+    sub_root = project.project_root / "SubProject"
+    sub_project = ProjectSettings(name="SubProject", project_root=sub_root)
+    manager.create(sub_project)
+
+    with pytest.raises(Exception, match="located inside it"):
+        manager.delete_permanently(project)
+    assert project.project_root.is_dir()
+    assert sub_root.is_dir()
+

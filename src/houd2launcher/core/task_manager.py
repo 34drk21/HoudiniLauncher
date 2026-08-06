@@ -8,6 +8,7 @@ from .config import atomic_write_model, load_model
 from .exceptions import PathSafetyError
 from .models import ProjectSettings, TaskSettings, utc_now
 from .path_resolver import PathResolver
+from .trash import send_to_trash
 from ..database.repositories import LauncherRepository
 
 
@@ -137,7 +138,7 @@ class TaskManager:
     def delete_permanently(
         self, project: ProjectSettings, task: TaskSettings
     ) -> Path:
-        """Permanently delete one direct-child Task folder and its local indexes."""
+        """Move a direct-child Task folder to Recycle Bin and remove its local indexes."""
         if task.project_id != project.project_id:
             raise ValueError("Task belongs to a different project")
         project_root = self.resolver.resolve_project_root(project)
@@ -151,7 +152,7 @@ class TaskManager:
         if not task_root.is_dir():
             raise FileNotFoundError(f"Task folder is missing: {task_root}")
 
-        shutil.rmtree(task_root)
+        send_to_trash(task_root)
         self.repository.remove_task(task.task_id)
         self.repository.record_activity(
             project.project_id,

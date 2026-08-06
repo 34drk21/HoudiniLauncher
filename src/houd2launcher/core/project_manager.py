@@ -7,6 +7,7 @@ from .config import atomic_write_model, load_model
 from .exceptions import DuplicateRegistrationError, PathSafetyError
 from .models import ProjectSettings, utc_now
 from .path_resolver import PathResolver
+from .trash import send_to_trash
 from ..database.repositories import LauncherRepository
 
 
@@ -76,7 +77,7 @@ class ProjectManager:
         self.repository.remove_project(project_id)
 
     def delete_permanently(self, project: ProjectSettings) -> Path:
-        """Permanently delete a validated Project root and its local indexes."""
+        """Move a validated Project root to Recycle Bin and remove its local indexes."""
         root = self.resolver.resolve_project_root(project)
         resolved = root.resolve()
         if resolved == Path(resolved.anchor) or resolved.parent == resolved:
@@ -86,6 +87,27 @@ class ProjectManager:
             raise PathSafetyError(f"Linked Project roots cannot be deleted: {root}")
         if not root.is_dir():
             raise FileNotFoundError(f"Project folder is missing: {root}")
+
+        # Check for overlapping/shared project roots among registered projects
+        registered_projects = self.repository.list_projects(include_archived=True)
+        for record in registered_projects:
+            if record["project_id"] == project.project_id:
+                continue
+            other_root = Path(str(record["root"])).resolve()
+            if other_root == resolved:
+                raise PathSafetyError(
+                    f"Cannot delete project root '{root}' because registered project "
+                    f"'{record['name']}' shares the exact same directory."
+                )
+            try:
+                other_root.relative_to(resolved)
+                raise PathSafetyError(
+                    f"Cannot delete project root '{root}' because registered project "
+                    f"'{record['name']}' ({other_root}) is located inside it."
+                )
+            except ValueError:
+                pass
+
         config = self.resolver.resolve_project_metadata_path(project)
         expected_config = resolved / ".houd2" / "project.json"
         if config.resolve() != expected_config:
@@ -99,7 +121,7 @@ class ProjectManager:
         ):
             raise ValueError("Project metadata does not match the selected Project")
 
-        shutil.rmtree(root)
+        send_to_trash(root)
         self.repository.remove_project(project.project_id)
         self.repository.record_activity(
             project.project_id,

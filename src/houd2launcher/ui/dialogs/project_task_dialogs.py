@@ -79,10 +79,15 @@ class NewProjectDialog(QDialog):
 
     def settings(self) -> ProjectSettings:
         """Build validated project settings from the dialog fields."""
+        name = self.name.text().strip()
+        root_text = self.root.text().strip()
+        root_path = Path(root_text) if root_text else Path(".")
+        if name and root_path.name.casefold() != name.casefold():
+            root_path = root_path / name
         return ProjectSettings(
-            name=self.name.text(),
+            name=name,
             description=self.description.toPlainText().strip(),
-            project_root=Path(self.root.text()),
+            project_root=root_path,
         )
 
     def accept(self) -> None:

@@ -295,7 +295,7 @@ class TaskPanel(QWidget):
                     else self.archive_requested.emit(task)
                 ),
             ),
-            ("Delete Task Permanently...", lambda: self.delete_requested.emit(task)),
+            ("Delete Task (Move to Recycle Bin)...", lambda: self.delete_requested.emit(task)),
         )
         for label, callback in actions:
             action = menu.addAction(label)

@@ -172,7 +172,7 @@ class ProjectPanel(QWidget):
                 ),
             ),
             ("Remove from Launcher", lambda: self.unregister_requested.emit(project)),
-            ("Delete Project Permanently...", lambda: self.delete_requested.emit(project)),
+            ("Delete Project (Move to Recycle Bin)...", lambda: self.delete_requested.emit(project)),
         ]
         for label, callback in actions:
             action = QAction(label, menu)

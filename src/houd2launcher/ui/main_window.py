@@ -486,10 +486,10 @@ class MainWindow(QMainWindow):
     def delete_project_permanently(self, project: ProjectSettings) -> None:
         answer = QMessageBox.warning(
             self,
-            "Delete Project Permanently",
-            f"Permanently delete {project.name}?\n\n"
-            "Every Task, HIP, cache, setting, thumbnail, and other file inside "
-            "this Project will be deleted. This cannot be undone.",
+            "Delete Project (Move to Recycle Bin)",
+            f"Move Project '{project.name}' to the Recycle Bin?\n\n"
+            "The Project folder and its files will be moved to the system Recycle Bin (Trash). "
+            "You can restore it from the Recycle Bin if needed.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -497,8 +497,8 @@ class MainWindow(QMainWindow):
             return
         confirmation, accepted = QInputDialog.getText(
             self,
-            "Confirm Permanent Project Deletion",
-            f'Type the Project name "{project.name}" to confirm:',
+            "Confirm Project Deletion",
+            f'Type the Project name "{project.name}" to confirm moving to Recycle Bin:',
         )
         if not accepted:
             return
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
             )
             return
         self._run_operation(
-            f"Deleting Project {project.name} permanently...",
+            f"Moving Project {project.name} to Recycle Bin...",
             lambda: self.context.projects.delete_permanently(project),
             lambda _: self._project_deleted(project),
         )
@@ -524,12 +524,9 @@ class MainWindow(QMainWindow):
             self.context.settings.last_project_id = None
             self.context.settings.last_task_id = None
             self.context.save_settings()
-        watched = self._filesystem_watcher.directories()
-        if watched:
-            self._filesystem_watcher.removePaths(watched)
         self.refresh_projects()
         self.statusBar().showMessage(
-            f"Project deleted permanently: {project.name}", 8000
+            f"Project moved to Recycle Bin: {project.name}", 8000
         )
 
     def duplicate_project_configuration(self, project: ProjectSettings) -> None:
@@ -995,10 +992,10 @@ class MainWindow(QMainWindow):
             return
         answer = QMessageBox.warning(
             self,
-            "Delete Task Permanently",
-            f"Permanently delete {task.name}?\n\n"
+            "Delete Task (Move to Recycle Bin)",
+            f"Move Task '{task.name}' to the Recycle Bin?\n\n"
             "All HIP files, caches, metadata, thumbnails, and other files in this "
-            "Task will be deleted. This cannot be undone.",
+            "Task will be moved to the system Recycle Bin (Trash).",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -1006,8 +1003,8 @@ class MainWindow(QMainWindow):
             return
         confirmation, accepted = QInputDialog.getText(
             self,
-            "Confirm Permanent Deletion",
-            f'Type the Task name "{task.name}" to confirm:',
+            "Confirm Task Deletion",
+            f'Type the Task name "{task.name}" to confirm moving to Recycle Bin:',
         )
         if not accepted:
             return
@@ -1020,7 +1017,7 @@ class MainWindow(QMainWindow):
             return
         project = self.current_project
         self._run_operation(
-            f"Deleting {task.name} permanently...",
+            f"Moving {task.name} to Recycle Bin...",
             lambda: self.context.tasks.delete_permanently(project, task),
             lambda _: self._task_deleted(project, task),
         )
@@ -1033,7 +1030,7 @@ class MainWindow(QMainWindow):
             self.context.settings.last_task_id = None
             self.context.save_settings()
         self._load_tasks(project)
-        self.statusBar().showMessage(f"Task deleted permanently: {task.name}", 8000)
+        self.statusBar().showMessage(f"Task moved to Recycle Bin: {task.name}", 8000)
 
     def set_thumbnail(self) -> None:
         if not self._require_task():
