@@ -441,9 +441,10 @@ class MainWindow(QMainWindow):
             return
         try:
             project = self.context.projects.add_existing(Path(root))
+            self.current_project = project
+            self.refresh_projects()
             self.project_panel.select_project(project)
             self._select_project(project)
-            self.refresh_projects()
             self.statusBar().showMessage(f"Added existing project: {project.name}", 6000)
         except Exception as exc:
             self._error("Cannot add project", exc)

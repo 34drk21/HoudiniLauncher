@@ -59,6 +59,17 @@ def test_dark_is_the_launcher_default() -> None:
     assert LauncherSettings().theme == "dark"
 
 
+def test_project_panel_select_project(tmp_path: Path) -> None:
+    _app()
+    panel = ProjectPanel()
+    p1 = ProjectSettings(name="Alpha", project_root=tmp_path / "Alpha")
+    p2 = ProjectSettings(name="Beta", project_root=tmp_path / "Beta")
+    panel.set_projects([p1, p2])
+    panel.select_project(p2)
+    assert panel.current_project() == p2
+
+
+
 def test_first_run_scan_populates_versions_before_finish(
     tmp_path: Path, monkeypatch
 ) -> None:

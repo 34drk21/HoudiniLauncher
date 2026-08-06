@@ -137,6 +137,16 @@ class ProjectPanel(QWidget):
         item = self.list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
+    def select_project(self, project: str | ProjectSettings) -> None:
+        """Select a project by its ID or ProjectSettings object."""
+        target_id = project.project_id if isinstance(project, ProjectSettings) else project
+        for row in range(self.list.count()):
+            item = self.list.item(row)
+            data = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(data, ProjectSettings) and data.project_id == target_id:
+                self.list.setCurrentItem(item)
+                return
+
     def _selection_changed(self, current: QListWidgetItem | None) -> None:
         if current:
             self.project_selected.emit(current.data(Qt.ItemDataRole.UserRole))
