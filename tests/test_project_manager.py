@@ -161,3 +161,22 @@ def test_delete_project_blocks_if_child_or_shared_project_exists(
     assert project.project_root.is_dir()
     assert sub_root.is_dir()
 
+
+def test_readd_project_with_new_id_does_not_fail_unique_constraint(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+
+    # Simulate deleting metadata and recreating setting with a new project_id at the same root
+    new_project = ProjectSettings(name=project.name, project_root=project.project_root)
+    atomic_write_model(resolver.resolve_project_metadata_path(project), new_project)
+
+    # Adding existing or upserting must succeed without UNIQUE constraint failed on root
+    added = manager.add_existing(project.project_root)
+    assert added.project_id == new_project.project_id
+    assert len(manager.registered()) == 1
+
+

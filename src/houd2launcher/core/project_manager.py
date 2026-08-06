@@ -160,17 +160,13 @@ class ProjectManager:
         settings: ProjectSettings,
         config_path: Path,
     ) -> dict[str, object] | None:
-        """Find a different ID pointing at the same Root and canonical JSON file."""
+        """Find a different ID pointing at the same Root directory."""
         expected_root = settings.project_root.resolve()
-        expected_config = config_path.resolve()
         for record in records:
             try:
                 root_matches = Path(str(record["root"])).resolve() == expected_root
-                config_matches = (
-                    Path(str(record["config_path"])).resolve() == expected_config
-                )
             except (KeyError, OSError):
                 continue
-            if root_matches and config_matches and record.get("project_id") != settings.project_id:
+            if root_matches and record.get("project_id") != settings.project_id:
                 return record
         return None

@@ -22,7 +22,22 @@ class LauncherRepository:
         self, project_id: str, name: str, root: Path, config_path: Path
     ) -> None:
         """Insert or refresh a registered project index record."""
+        resolved_root = root.expanduser().resolve()
         with self.database.connect() as connection:
+            stale_rows = connection.execute(
+                "SELECT project_id, root FROM projects WHERE project_id != ?",
+                (project_id,),
+            ).fetchall()
+            for row in stale_rows:
+                try:
+                    if Path(str(row["root"])).expanduser().resolve() == resolved_root:
+                        connection.execute(
+                            "DELETE FROM projects WHERE project_id = ?",
+                            (str(row["project_id"]),),
+                        )
+                except Exception:
+                    pass
+
             connection.execute(
                 """
                 INSERT INTO projects(project_id, name, root, config_path, last_accessed, missing)
@@ -142,6 +157,10 @@ class LauncherRepository:
     ) -> None:
         """Insert or refresh one task index record."""
         with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM tasks WHERE project_id = ? AND name = ? AND task_id != ?",
+                (project_id, name, task_id),
+            )
             connection.execute(
                 """
                 INSERT INTO tasks(task_id, project_id, name, config_path, status, modified_at)
