@@ -277,6 +277,7 @@ class LauncherSettings(StrictModel):
     last_project_id: str | None = None
     last_task_id: str | None = None
     cache_exchange_paths: dict[str, str] = Field(default_factory=dict)
+    package_exchange_path: Path | None = None
     update_channel_path: Path | None = None
     auto_check_updates: bool = True
     last_update_check_at: datetime | None = None
@@ -286,7 +287,9 @@ class LauncherSettings(StrictModel):
     def validate_environment(cls, value: dict[str, str]) -> dict[str, str]:
         return {validate_environment_name(name): str(item) for name, item in value.items()}
 
-    @field_validator("default_project_root", "update_channel_path")
+    @field_validator(
+        "default_project_root", "package_exchange_path", "update_channel_path"
+    )
     @classmethod
     def validate_optional_absolute_path(cls, value: Path | None) -> Path | None:
         if value is None:

@@ -360,7 +360,7 @@
           <div class="brand-mark">H2</div>
           <div>
             <h1>HouD2Launcher Handbook</h1>
-            <p>v0.3.0 · Local-first Houdini Project Launcher</p>
+            <p>v0.4.4 · Local-first Houdini Project Launcher</p>
           </div>
         </div>
         <div class="search-wrap">
@@ -380,7 +380,7 @@
   <div class="page-shell">
     <aside class="side-nav" id="side-nav" aria-label="このタブの目次"></aside>
     <main id="main-content">
-      <p class="print-note">HouD2Launcher Handbook v0.3.0 · 2026-08-03</p>
+      <p class="print-note">HouD2Launcher Handbook v0.4.4 · 2026-08-10</p>
 
       <article class="role-panel active" data-role="user" data-role-label="一般ユーザー">
         <header class="role-intro">
@@ -546,19 +546,30 @@ D:\proj\fire\houdini\geo\sphere\v1\sphere_v1.0001.bgeo.sc</div>
           <p>同名Taskがある場合は<code>_copy</code>、<code>_copy2</code>のように別名化され、新しいTask IDと管理HIP名へ更新されます。元の<code>$HIP</code>相対参照はHIP内部を変更しないため維持されます。</p>
         </section>
 
-        <section class="doc-section" id="user-lifecycle" data-title="Archiveと完全削除" data-keywords="archive delete permanently task remove danger restore">
-          <h2>Archiveと完全削除</h2>
+        <section class="doc-section" id="user-exchange" data-title="Project / Task Package Exchange" data-keywords="project task package exchange publish import shared folder copy checksum">
+          <h2>Project / Task Package Exchange</h2>
+          <p><b>File &gt; Project / Task Exchange...</b>から共有フォルダを設定すると、ProjectとTaskを通常フォルダ形式の検証済みPackageとして受け渡せます。ProjectまたはTaskの右クリック先頭にあるPublish操作でSnapshotを作成し、Exchange一覧の右クリックからImportします。</p>
+          <ol class="step-list">
+            <li><strong>Publish</strong><span>一時フォルダへコピーして全ファイルのSHA-256を確認し、完成後だけ一覧へ公開します。Cache Roleの中身は除外します。</span></li>
+            <li><strong>Browse</strong><span>検索、Project/Taskフィルター、容量、公開者、公開日時を確認できます。Refreshで共有フォルダを再読込します。</span></li>
+            <li><strong>Import</strong><span>Taskは現在選択中のProjectへ、Projectは選択したローカル親フォルダへコピーします。共有PackageはImport後も残ります。</span></li>
+          </ol>
+          <div class="callout"><strong>既存データは上書きしません</strong>同じIDまたは名前がある場合は<code>_copy</code>、<code>_copy2</code>のように別名化し、新しいIDと整合するHIPメタデータへ更新します。</div>
+        </section>
+
+        <section class="doc-section" id="user-lifecycle" data-title="ArchiveとTrash" data-keywords="archive trash recycle bin task remove restore fallback">
+          <h2>ArchiveとTrash</h2>
           <p>Archived項目は通常の制作一覧から隠れます。ProjectsまたはTasks上部の<b>Show Archived</b>を有効にすると再表示され、右クリックの<b>Restore Project</b>または<b>Restore Task</b>でActiveへ戻せます。ファイルはArchive中も元の場所に残ります。</p>
           <div class="table-wrap"><table>
             <thead><tr><th>操作</th><th>起きること</th><th>戻せるか</th></tr></thead>
             <tbody>
               <tr><td>Archive Project</td><td>このPCのLauncher一覧でProjectをArchived扱いにする。Projectフォルダは残る。</td><td>Restore Project</td></tr>
               <tr><td>Archive Task</td><td><code>task.json</code>のStatusを<code>archived</code>へ変更。ファイルは残る。</td><td>Restore Task</td></tr>
-              <tr><td>Delete Task Permanently...</td><td>Taskフォルダ内のHIP、Cache、設定、サムネイルをすべて完全削除。</td><td><b class="unused">戻せない</b></td></tr>
-              <tr><td>Delete Project Permanently...</td><td>Project Root内の全Task、HIP、Cache、設定とその他の全ファイルを完全削除。</td><td><b class="unused">戻せない</b></td></tr>
+              <tr><td>Move Task to Trash...</td><td>Taskフォルダ全体をOS Trashへ移動。非対応ドライブでは親の<code>.trash</code>へ退避。</td><td>Trashまたは表示された退避先から復旧</td></tr>
+              <tr><td>Move Project to Trash...</td><td>Project Root全体をOS Trashへ移動。PowerShellは起動しない。</td><td>Trashまたは表示された退避先から復旧</td></tr>
             </tbody>
           </table></div>
-          <div class="callout danger"><strong>完全削除は名前の入力確認が必要</strong>Task削除はTask名、Project削除はProject名の完全一致を要求します。重要なデータは先にTask Packageや別バックアップを作ってください。</div>
+          <div class="callout warning"><strong>Trash移動も名前の入力確認が必要</strong>TaskはTask名、ProjectはProject名の完全一致を要求します。CacheタブのVersion削除だけは完全削除のままです。</div>
         </section>
 
         <section class="doc-section" id="user-trouble" data-title="よくある問題" data-keywords="troubleshooting error missing external unused unique constraint cannot add project frame range v2 write">
@@ -912,7 +923,7 @@ houdini/
                 <li><code>build()</code><span>OS、Launcher、Project、Task、Open時Override、保護済み<code>HOUD2_*</code>の順でProcess Environmentを構築します。</span></li>
                 <li><code>expression_environment()</code><span>Tokenを展開した安全な変数一覧を返します。API Tokenは含めません。</span></li>
                 <li><code>_resolve_variables() / _expand_context()</code><span>再帰的な<code>{token}</code>展開、未知Token、循環参照を検出します。</span></li>
-                <li><code>_apply_search_paths()</code><span><code>PYTHONPATH</code>と<code>HOUDINI_OTLSCAN_PATH</code>へHDA連携Pathを追加します。</span></li>
+                <li><code>_apply_search_paths() / expand_hda_search_roots()</code><span>HDA Search Rootを末端まで走査し、HDA/OTLが存在する実ディレクトリを重複なく<code>HOUDINI_OTLSCAN_PATH</code>へ追加します。symlink/junctionは追跡しません。</span></li>
                 <li><code>_frame_variables()</code><span><code>TASK_NAME</code>、<code>SHOT_FRAME_START</code>、<code>SHOT_FRAME_END</code>などを生成します。</span></li>
               </ul>
             </div>
@@ -1219,8 +1230,8 @@ houdini/
           </details>
 
           <details class="file-reference">
-            <summary><code>ui/dialogs/settings_import_dialog.py</code> / <code>task_package_dialog.py</code></summary>
-            <div class="file-reference-body"><p class="file-purpose">設定ImportのSection選択とDiff、Task PackageのFile数・容量・除外Role・Project Context差分・Import後Task名をPreviewします。</p></div>
+            <summary><code>ui/dialogs/settings_import_dialog.py</code> / <code>task_package_dialog.py</code> / <code>package_exchange_dialog.py</code></summary>
+            <div class="file-reference-body"><p class="file-purpose">設定ImportのSection選択とDiff、Task Package Preview、Project/Task ExchangeのPath・検索・種別Filter・Import Previewを提供します。</p></div>
           </details>
 
           <details class="file-reference">
@@ -1278,8 +1289,8 @@ houdini/
           <div class="callout warning"><strong>Usedは選択HIPに対する状態</strong>全Projectの依存解析ではありません。別HIPの参照を同時に集約しない設計です。</div>
         </section>
 
-        <section class="doc-section" id="dev-package" data-title="Task Package Protocol" data-keywords="task package protocol manifest sha256 staging atomic import collision traversal secrets">
-          <h2>Task Package Protocol</h2>
+        <section class="doc-section" id="dev-package" data-title="Package Protocol" data-keywords="project task package exchange protocol manifest sha256 staging atomic import collision traversal secrets">
+          <h2>Task / Project Package Protocol</h2>
           <h3>Export</h3>
           <p>Destination siblingの<code>.{name}.part-{uuid}</code>へcopyし、全fileのsize、mtime、SHA-256を記録します。自己検証後に<code>os.replace</code>で完成名へ切り替えます。Cache Role、link、secret-like environment、絶対Project Rootを除外します。</p>
           <h3>Manifest</h3>
@@ -1299,6 +1310,8 @@ houdini/
 }</code></pre>
           <h3>Import</h3>
           <p>Schema、欠損、Checksum、Path Traversal、link、宣言外fileを検証してPreviewを返します。同名衝突時は<code>_copyN</code>、新Task ID、管理HIP filename/metadata更新。Installation IDはclearしてTarget Project defaultへfallbackします。</p>
+          <h3>Package Exchange</h3>
+          <p><code>core/package_exchange.py</code>の<code>PackageExchangeService</code>がTask Packageを共有Snapshotへ包み、Project Packageでは全Taskへ同じ除外・Portable設定処理を適用します。<code>publish_project()</code>、<code>publish_task()</code>、<code>discover()</code>、<code>preview_import()</code>、<code>import_package()</code>をUIからBackground実行します。</p>
         </section>
 
         <section class="doc-section" id="dev-delete" data-title="Destructive Operations" data-keywords="delete task cache permanent repository cascade confirmation background">
@@ -1310,7 +1323,7 @@ houdini/
               <tr><td>Task delete</td><td>Project direct child、非link、Project ID一致。</td><td>警告 + Task名完全一致。</td><td>Task/HIP indexを削除、Activityを記録</td></tr>
             </tbody>
           </table></div>
-          <p>UI threadをblockしないよう、削除は<code>OperationThread</code>で実行します。完了後にTask discoveryを再実行し、最後のTaskならDetail panelをclearします。</p>
+          <p>Project/Taskは<code>send2trash</code>でOSのTrashへ移動し、PowerShellは起動しません。非対応ドライブでは同じ親の<code>.trash/{name}_{uuid}</code>へ移動し、<code>TrashResult</code>で復旧先をUIへ返します。Cache削除だけは従来どおり完全削除です。</p>
         </section>
 
         <section class="doc-section" id="dev-testing" data-title="Development and Tests" data-keywords="pytest setup build pyinstaller tests smoke windows development">
@@ -1332,23 +1345,23 @@ hython houdini\scripts\test_cache_hdas.py
 .\scripts\build_release.ps1
 
 # Publish a private shared-folder update
-.\scripts\publish_update.ps1 -ChannelPath Z:\HouD2Launcher\updates -InstallerPath .\dist\installer\HouD2Launcher-0.3.0-Setup.exe -Version 0.3.0</code></pre>
+.\scripts\publish_update.ps1 -ChannelPath Z:\HouD2Launcher\updates -InstallerPath .\dist\installer\HouD2Launcher-0.4.4-Setup.exe -Version 0.4.4</code></pre>
           <p>テストはProject/Task/HIP lifecycle、Path containment、Houdini compatibility/creation/open、初回Version Scan、PC別HDA Build、Python subprocess隔離、Environment resolution、Cache Catalog、DB Admin、Settings import/export、Task Package security、Updater、UI basicsをカバーします。</p>
-          <div class="callout success"><strong>現在の基準</strong>通常Pythonテスト125件に加え、Houdini 22 HythonでCache Out→Catalog→Cache In、Marker/Manifest、日本語・Space Path、保存HIP再読込後のUsed参照を検証します。</div>
+          <div class="callout success"><strong>現在の基準</strong>通常Pythonテスト143件に加え、Houdini 22 HythonでCache Out→Catalog→Cache In、Marker/Manifest、日本語・Space Path、保存HIP再読込後のUsed参照を検証します。</div>
         </section>
 
         <section class="doc-section" id="dev-boundaries" data-title="Current Boundaries and Future Work" data-keywords="not implemented future ftp sync hda load cache render farm prism">
           <h2>Current Boundaries and Future Work</h2>
           <p>現在のLauncherは独立実装であり、Prism APIやPrism source codeを使用していません。</p>
           <div class="grid-2">
-            <div class="info-block"><h3>実装済み</h3><p>Project/Task/HIP管理、Houdini選択、Environment、Cache在庫とUsed判定、Cache Out/In HDA、Catalog API、Task Package、DB Admin。</p></div>
+            <div class="info-block"><h3>実装済み</h3><p>Project/Task/HIP管理、Houdini選択、Environment、Cache在庫とUsed判定、Cache Out/In HDA、Catalog API、Task Package、Project/Task Package Exchange、DB Admin。</p></div>
             <div class="info-block"><h3>未実装</h3><p>PC間Cache同期Provider、FTP/SFTP/FTPS、共有Server Registry、Render Farm連携、Houdini Python Panel。</p></div>
           </div>
           <p>将来のCache同期はLauncherのRole/Path/Task ID/Cache Version規約を利用しつつ、ネットワーク認証情報をProject JSONやTask Packageへ保存しない設計を維持します。</p>
         </section>
       </article>
 
-      <footer class="footer">HouD2Launcher Handbook · v0.3.0 installer and private update snapshot · Last updated 2026-08-03</footer>
+      <footer class="footer">HouD2Launcher Handbook · v0.4.4 Package Exchange and safe Trash · Last updated 2026-08-10</footer>
     </main>
   </div>
 

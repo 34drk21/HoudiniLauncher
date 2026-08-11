@@ -8,7 +8,7 @@ from .config import atomic_write_model, load_model
 from .exceptions import PathSafetyError
 from .models import ProjectSettings, TaskSettings, utc_now
 from .path_resolver import PathResolver
-from .trash import send_to_trash
+from .trash import TrashResult, send_to_trash
 from ..database.repositories import LauncherRepository
 
 
@@ -63,10 +63,23 @@ class TaskManager:
         )
         return task
 
-    def load(self, project: ProjectSettings, config_path: Path) -> TaskSettings:
-        """Load task JSON and refresh its SQLite index, repairing project_id if needed."""
+    def load(
+        self,
+        project: ProjectSettings,
+        config_path: Path,
+        *,
+        repair_project_id: bool = False,
+    ) -> TaskSettings:
+        """Load task JSON, optionally repairing a verified copied Task identity."""
         task = load_model(config_path, TaskSettings)
         if task.project_id != project.project_id:
+            if not repair_project_id:
+                raise ValueError("Task belongs to a different project")
+            expected = self.resolver.resolve_task_metadata_path(project, task.name)
+            if config_path.resolve() != expected.resolve():
+                raise PathSafetyError(
+                    f"Task metadata is not at its canonical Project path: {config_path}"
+                )
             task.project_id = project.project_id
             atomic_write_model(config_path, task)
         self._index(project, task)
@@ -136,9 +149,9 @@ class TaskManager:
         task.status = "active"
         self.save(project, task)
 
-    def delete_permanently(
+    def move_to_trash(
         self, project: ProjectSettings, task: TaskSettings
-    ) -> Path:
+    ) -> TrashResult:
         """Move a direct-child Task folder to Recycle Bin and remove its local indexes."""
         if task.project_id != project.project_id:
             raise ValueError("Task belongs to a different project")
@@ -153,15 +166,26 @@ class TaskManager:
         if not task_root.is_dir():
             raise FileNotFoundError(f"Task folder is missing: {task_root}")
 
-        send_to_trash(task_root)
+        result = send_to_trash(task_root)
         self.repository.remove_task(task.task_id)
         self.repository.record_activity(
             project.project_id,
-            "task_deleted_permanently",
-            {"name": task.name, "path": str(task_root)},
+            "task_moved_to_trash",
+            {
+                "name": task.name,
+                "path": str(task_root),
+                "method": result.method,
+                "recovery_path": str(result.recovery_path or ""),
+            },
             task.task_id,
         )
-        return task_root
+        return result
+
+    def delete_permanently(
+        self, project: ProjectSettings, task: TaskSettings
+    ) -> Path:
+        """Compatibility wrapper for older callers."""
+        return self.move_to_trash(project, task).original_path
 
     def set_thumbnail(
         self, project: ProjectSettings, task: TaskSettings, source: Path

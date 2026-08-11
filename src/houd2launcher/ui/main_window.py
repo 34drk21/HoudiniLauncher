@@ -54,6 +54,10 @@ from .dialogs.project_task_dialogs import (
 )
 from .dialogs.settings_import_dialog import SettingsImportDialog
 from .dialogs.task_package_dialog import TaskPackageImportDialog
+from .dialogs.package_exchange_dialog import (
+    PackageExchangeDialog,
+    PackageImportPreviewDialog,
+)
 from .dialogs.sdm_package_dialog import SdmPackageDialog
 from .panels.project_panel import ProjectPanel
 from .panels.task_details_panel import TaskDetailsPanel
@@ -121,6 +125,7 @@ class MainWindow(QMainWindow):
         self._hda_builds: set[str] = set()
         self._hda_waiters: dict[str, list[Callable[[], None]]] = {}
         self._hda_warnings: set[str] = set()
+        self._package_dialog: PackageExchangeDialog | None = None
         self._ignored_task_candidates: set[tuple[str, str]] = set()
         self._suppress_adoption_prompts = True
         self._filesystem_watcher = QFileSystemWatcher(self)
@@ -173,6 +178,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction("Export Project Settings", self.export_project_settings)
         file_menu.addAction("Import Project Settings", self.import_project_settings)
+        file_menu.addAction("Project / Task Exchange...", self.open_package_exchange)
         file_menu.addSeparator()
         file_menu.addAction("Exit", self.close)
         view_menu = self.menuBar().addMenu("View")
@@ -210,6 +216,8 @@ class MainWindow(QMainWindow):
         )
         self.project_panel.favorite_requested.connect(self.set_project_favorite)
         self.project_panel.package_import_requested.connect(self.import_task_package)
+        self.project_panel.package_publish_requested.connect(self.publish_project_package)
+        self.project_panel.package_exchange_requested.connect(self.open_package_exchange)
         self.task_panel.task_selected.connect(self._select_task)
         self.task_panel.new_task_requested.connect(self.new_task)
         self.task_panel.task_activated.connect(self._task_activated)
@@ -228,6 +236,7 @@ class MainWindow(QMainWindow):
         self.task_panel.export_requested.connect(self._export_task_from_context)
         self.task_panel.import_requested.connect(self._import_task_from_context)
         self.task_panel.package_export_requested.connect(self.export_task_package)
+        self.task_panel.package_publish_requested.connect(self.publish_task_package)
         self.task_panel.sdm_export_requested.connect(self.export_sdm_package)
         self.task_panel.delete_requested.connect(self.delete_task_permanently)
         self.details_panel.open_requested.connect(self.open_hip)
@@ -489,10 +498,10 @@ class MainWindow(QMainWindow):
     def delete_project_permanently(self, project: ProjectSettings) -> None:
         answer = QMessageBox.warning(
             self,
-            "Delete Project (Move to Recycle Bin)",
-            f"Move Project '{project.name}' to the Recycle Bin?\n\n"
-            "The Project folder and its files will be moved to the system Recycle Bin (Trash). "
-            "You can restore it from the Recycle Bin if needed.",
+            "Move Project to Trash",
+            f"Move Project '{project.name}' to Trash?\n\n"
+            "When the system Trash is unavailable, the folder is safely moved into "
+            "a sibling .trash folder instead.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -500,8 +509,8 @@ class MainWindow(QMainWindow):
             return
         confirmation, accepted = QInputDialog.getText(
             self,
-            "Confirm Project Deletion",
-            f'Type the Project name "{project.name}" to confirm moving to Recycle Bin:',
+            "Confirm Move to Trash",
+            f'Type the Project name "{project.name}" to confirm:',
         )
         if not accepted:
             return
@@ -513,12 +522,12 @@ class MainWindow(QMainWindow):
             )
             return
         self._run_operation(
-            f"Moving Project {project.name} to Recycle Bin...",
-            lambda: self.context.projects.delete_permanently(project),
-            lambda _: self._project_deleted(project),
+            f"Moving Project {project.name} to Trash...",
+            lambda: self.context.projects.move_to_trash(project),
+            lambda result: self._project_deleted(project, result),
         )
 
-    def _project_deleted(self, project: ProjectSettings) -> None:
+    def _project_deleted(self, project: ProjectSettings, result: object) -> None:
         if self.current_project and self.current_project.project_id == project.project_id:
             self.current_project = None
             self.current_task = None
@@ -528,9 +537,13 @@ class MainWindow(QMainWindow):
             self.context.settings.last_task_id = None
             self.context.save_settings()
         self.refresh_projects()
-        self.statusBar().showMessage(
-            f"Project moved to Recycle Bin: {project.name}", 8000
+        recovery = getattr(result, "recovery_path", None)
+        message = (
+            f"Project moved to fallback Trash: {recovery}"
+            if recovery
+            else f"Project moved to system Trash: {project.name}"
         )
+        self.statusBar().showMessage(message, 12000)
 
     def duplicate_project_configuration(self, project: ProjectSettings) -> None:
         dialog = NewProjectDialog(project.project_root.parent, self)
@@ -995,10 +1008,11 @@ class MainWindow(QMainWindow):
             return
         answer = QMessageBox.warning(
             self,
-            "Delete Task (Move to Recycle Bin)",
-            f"Move Task '{task.name}' to the Recycle Bin?\n\n"
+            "Move Task to Trash",
+            f"Move Task '{task.name}' to Trash?\n\n"
             "All HIP files, caches, metadata, thumbnails, and other files in this "
-            "Task will be moved to the system Recycle Bin (Trash).",
+            "Task will be moved together. A sibling .trash folder is used when the "
+            "system Trash is unavailable.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -1006,8 +1020,8 @@ class MainWindow(QMainWindow):
             return
         confirmation, accepted = QInputDialog.getText(
             self,
-            "Confirm Task Deletion",
-            f'Type the Task name "{task.name}" to confirm moving to Recycle Bin:',
+            "Confirm Move to Trash",
+            f'Type the Task name "{task.name}" to confirm:',
         )
         if not accepted:
             return
@@ -1020,12 +1034,14 @@ class MainWindow(QMainWindow):
             return
         project = self.current_project
         self._run_operation(
-            f"Moving {task.name} to Recycle Bin...",
-            lambda: self.context.tasks.delete_permanently(project, task),
-            lambda _: self._task_deleted(project, task),
+            f"Moving {task.name} to Trash...",
+            lambda: self.context.tasks.move_to_trash(project, task),
+            lambda result: self._task_deleted(project, task, result),
         )
 
-    def _task_deleted(self, project: ProjectSettings, task: TaskSettings) -> None:
+    def _task_deleted(
+        self, project: ProjectSettings, task: TaskSettings, result: object
+    ) -> None:
         if self.current_task and self.current_task.task_id == task.task_id:
             self.current_task = None
             self.details_panel.clear_task()
@@ -1033,7 +1049,13 @@ class MainWindow(QMainWindow):
             self.context.settings.last_task_id = None
             self.context.save_settings()
         self._load_tasks(project)
-        self.statusBar().showMessage(f"Task moved to Recycle Bin: {task.name}", 8000)
+        recovery = getattr(result, "recovery_path", None)
+        message = (
+            f"Task moved to fallback Trash: {recovery}"
+            if recovery
+            else f"Task moved to system Trash: {task.name}"
+        )
+        self.statusBar().showMessage(message, 12000)
 
     def set_thumbnail(self) -> None:
         if not self._require_task():
@@ -1321,6 +1343,198 @@ class MainWindow(QMainWindow):
     def _import_task_from_context(self, task: TaskSettings) -> None:
         self.current_task = task
         self.import_task_settings()
+
+    def open_package_exchange(self) -> None:
+        value = str(self.context.settings.package_exchange_path or "")
+        dialog = PackageExchangeDialog(value, self)
+        self._package_dialog = dialog
+        dialog.path_changed.connect(self._package_exchange_path_changed)
+        dialog.refresh_requested.connect(self._refresh_package_exchange)
+        dialog.import_requested.connect(self._import_exchange_package)
+        if value:
+            self._refresh_package_exchange(value)
+        dialog.exec()
+        self._package_dialog = None
+
+    def _package_exchange_path_changed(self, value: str) -> None:
+        try:
+            self.context.settings.package_exchange_path = (
+                Path(value).expanduser().resolve() if value else None
+            )
+            self.context.save_settings()
+        except Exception as exc:
+            self._error("Invalid Package Exchange Path", exc)
+
+    def _refresh_package_exchange(self, value: str) -> None:
+        if not self._package_dialog:
+            return
+        if not value:
+            self._package_dialog.set_records(())
+            return
+        path = Path(value)
+        self._run_operation(
+            "Reading Project / Task Exchange...",
+            lambda: self.context.package_exchange.discover(path),
+            self._package_exchange_refreshed,
+            failed=lambda error: self._error("Cannot read Package Exchange", error),
+        )
+
+    def _package_exchange_refreshed(self, records: object) -> None:
+        if self._package_dialog:
+            self._package_dialog.set_records(records)
+        self.statusBar().showMessage(f"Package Exchange refreshed: {len(records)} items", 5000)
+
+    def _select_package_exchange_path(self) -> Path | None:
+        current = self.context.settings.package_exchange_path
+        if current:
+            return current
+        value = QFileDialog.getExistingDirectory(
+            self,
+            "Select Project / Task Exchange Folder",
+            str(self.context.settings.default_project_root or Path.home()),
+        )
+        if not value:
+            return None
+        path = Path(value).resolve()
+        self.context.settings.package_exchange_path = path
+        self.context.save_settings()
+        return path
+
+    def publish_project_package(self, project: ProjectSettings) -> None:
+        exchange = self._select_package_exchange_path()
+        if exchange is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Publish Project",
+            f"Publish Project '{project.name}' to the Package Exchange?\n\n"
+            "Generated Cache folders are excluded.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        settings = self.context.settings
+        self._run_operation(
+            f"Publishing Project {project.name}...",
+            lambda: self.context.package_exchange.publish_project(
+                exchange,
+                project,
+                publisher_user_id=settings.user_id,
+                publisher_name=settings.display_name,
+            ),
+            lambda record: self._package_published(record),
+            failed=lambda error: self._error("Cannot publish Project", error),
+        )
+
+    def publish_task_package(self, task: TaskSettings) -> None:
+        if not self.current_project:
+            return
+        exchange = self._select_package_exchange_path()
+        if exchange is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Publish Task",
+            f"Publish Task '{task.name}' to the Package Exchange?\n\n"
+            "Generated Cache folders are excluded.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        project = self.current_project
+        settings = self.context.settings
+        self._run_operation(
+            f"Publishing Task {task.name}...",
+            lambda: self.context.package_exchange.publish_task(
+                exchange,
+                project,
+                task,
+                publisher_user_id=settings.user_id,
+                publisher_name=settings.display_name,
+            ),
+            lambda record: self._package_published(record),
+            failed=lambda error: self._error("Cannot publish Task", error),
+        )
+
+    def _package_published(self, record: object) -> None:
+        manifest = record.manifest
+        name = manifest.source_task_name or manifest.source_project_name
+        self.statusBar().showMessage(
+            f"{manifest.package_kind.title()} Package published: {name}", 8000
+        )
+        if self._package_dialog and self.context.settings.package_exchange_path:
+            self._refresh_package_exchange(
+                str(self.context.settings.package_exchange_path)
+            )
+
+    def _import_exchange_package(self, published: object) -> None:
+        manifest = published.manifest
+        if manifest.package_kind == "task":
+            if not self.current_project:
+                self._error(
+                    "Cannot import Task Package",
+                    "Select the target Project in the Launcher first.",
+                )
+                return
+            target_project = self.current_project
+            self._run_operation(
+                "Validating Task Exchange Package...",
+                lambda: self.context.package_exchange.preview_import(
+                    published, target_project=target_project
+                ),
+                lambda preview: self._show_exchange_import_preview(
+                    preview, target_project
+                ),
+                failed=lambda error: self._error("Cannot validate Task Package", error),
+            )
+            return
+
+        initial = self.context.settings.default_project_root
+        if initial is None and self.current_project:
+            initial = self.current_project.project_root.parent
+        destination = QFileDialog.getExistingDirectory(
+            self, "Select Local Project Parent Folder", str(initial or Path.home())
+        )
+        if not destination:
+            return
+        parent = Path(destination)
+        self._run_operation(
+            "Validating Project Exchange Package...",
+            lambda: self.context.package_exchange.preview_import(
+                published, project_parent=parent
+            ),
+            lambda preview: self._show_exchange_import_preview(preview, None),
+            failed=lambda error: self._error("Cannot validate Project Package", error),
+        )
+
+    def _show_exchange_import_preview(
+        self, preview: object, target_project: ProjectSettings | None
+    ) -> None:
+        dialog = PackageImportPreviewDialog(preview, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._run_operation(
+            f"Importing {preview.target_name}...",
+            lambda: self.context.package_exchange.import_package(
+                preview, target_project=target_project
+            ),
+            self._exchange_package_imported,
+            failed=lambda error: self._error("Cannot import Package", error),
+        )
+
+    def _exchange_package_imported(self, result: object) -> None:
+        if result.package_kind == "project":
+            self.current_project = result.project
+            self.current_task = None
+            self.context.settings.last_project_id = result.project.project_id
+            self.context.settings.last_task_id = None
+            self.context.save_settings()
+            self.refresh_projects()
+            self.project_panel.select_project(result.project)
+        else:
+            assert result.task is not None
+            self._task_package_imported(result.project, result.task)
+        self.statusBar().showMessage(
+            f"{result.package_kind.title()} Package imported: {result.path}", 10000
+        )
 
     def export_task_package(self, task: TaskSettings) -> None:
         if not self.current_project:

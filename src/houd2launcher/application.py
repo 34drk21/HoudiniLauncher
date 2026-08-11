@@ -20,6 +20,7 @@ from .core.path_resolver import PathResolver
 from .core.project_manager import ProjectManager
 from .core.task_manager import TaskManager
 from .core.task_package import TaskPackageService
+from .core.package_exchange import PackageExchangeService
 from .core.sdm_package import SdmPackageService
 from .core.update_manager import UpdateService
 from .database.connection import Database
@@ -55,6 +56,7 @@ class ApplicationContext:
     cache_exchange: CacheExchangeService
     cache_scanner: HoudiniCacheScanner
     task_packages: TaskPackageService
+    package_exchange: PackageExchangeService
     sdm_packages: SdmPackageService
     cache_catalog: CacheCatalogService
     catalog_api: CatalogApiServer
@@ -80,6 +82,7 @@ class ApplicationContext:
         folder_migrator = FolderStructureMigrator(resolver)
         filesystem = FilesystemReconciler(task_manager, hip_manager, resolver)
         cache_exchange = CacheExchangeService(resolver)
+        task_packages = TaskPackageService(resolver, task_manager)
         hda_manager = HdaManager(root, data_home)
         settings_ref = {"settings": settings}
         catalog = CacheCatalogService(
@@ -123,7 +126,10 @@ class ApplicationContext:
                 api_token=catalog_api.token,
                 hda_manager=hda_manager,
             ),
-            task_packages=TaskPackageService(resolver, task_manager),
+            task_packages=task_packages,
+            package_exchange=PackageExchangeService(
+                resolver, projects, task_manager, task_packages
+            ),
             sdm_packages=SdmPackageService(resolver),
             cache_catalog=catalog,
             catalog_api=catalog_api,

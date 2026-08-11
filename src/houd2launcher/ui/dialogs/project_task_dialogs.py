@@ -389,7 +389,9 @@ class ProjectSettingsDialog(QDialog):
         ):
             editor = QTextEdit("\n".join(getattr(project.search_paths, name)))
             editor.setMaximumHeight(72)
-            editor.setPlaceholderText("例: {project_root}/pipeline/houdini/hda")
+            editor.setPlaceholderText(
+                "例: {project_root}/pipeline/houdini/hda（配下のHDA/OTLを再帰検索）"
+            )
             self.path_edits[name] = editor
             add_helped_row(form, label, editor, "1行に1パスを指定できます。Token展開後、Houdiniの検索パスへ追加されます。")
         self.tabs.addTab(page, "Search Paths")

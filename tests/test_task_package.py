@@ -58,9 +58,9 @@ def test_export_excludes_cache_roles_and_writes_verified_manifest(
     assert f"task/houdini/{hip_path.name}" in listed
     assert "task/houdini/scripts/tool.py" in listed
     assert not any("/geo/" in path or "/trash/caches/" in path for path in listed)
-    assert "task/houdini/abc/asset.abc" in listed
+    assert "task/houdini/abc/asset.abc" not in listed
     assert {"geo_cache", ".houd2/trash/caches"} <= set(manifest["excluded_roles"])
-    assert "alembic" not in manifest["excluded_roles"]
+    assert "alembic" in manifest["excluded_roles"]
     assert manifest["source_houdini_versions"] == ["21.0.440"]
     context = json.loads((package / "project_context.json").read_text(encoding="utf-8"))
     assert "project_root" not in context
@@ -69,7 +69,7 @@ def test_export_excludes_cache_roles_and_writes_verified_manifest(
     assert preview.total_size == sum(item["size"] for item in manifest["files"])
 
 
-def test_import_without_collision_preserves_task_id_and_clears_machine_ids(
+def test_import_with_global_id_collision_creates_copy_and_clears_machine_ids(
     project, repository, resolver, tmp_path: Path
 ) -> None:
     tasks, task, hip_path = _source_task(project, repository, resolver)
@@ -81,13 +81,14 @@ def test_import_without_collision_preserves_task_id_and_clears_machine_ids(
     preview = service.preview_import(package, target)
     imported = service.import_package(package, target, preview)
 
-    assert not preview.renamed
-    assert imported.task_id == task.task_id
+    assert preview.renamed
+    assert imported.name == "fire_copy"
+    assert imported.task_id != task.task_id
     assert imported.recommended_installation_id is None
-    imported_hip = resolver.resolve_houdini_root(target, imported) / hip_path.name
+    imported_hip = next(resolver.resolve_houdini_root(target, imported).glob("*.hip"))
     metadata = HipManager(repository, resolver).list_hips(target, imported)[0].metadata
     assert imported_hip.is_file()
-    assert metadata.task_id == task.task_id
+    assert metadata.task_id == imported.task_id
     assert metadata.last_saved_with is None
     assert metadata.recommended_installation_id is None
 

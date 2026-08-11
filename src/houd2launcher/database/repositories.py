@@ -22,21 +22,18 @@ class LauncherRepository:
         self, project_id: str, name: str, root: Path, config_path: Path
     ) -> None:
         """Insert or refresh a registered project index record."""
-        resolved_root = root.expanduser().resolve()
         with self.database.connect() as connection:
-            stale_rows = connection.execute(
-                "SELECT project_id, root FROM projects WHERE project_id != ?",
-                (project_id,),
-            ).fetchall()
-            for row in stale_rows:
-                try:
-                    if Path(str(row["root"])).expanduser().resolve() == resolved_root:
-                        connection.execute(
-                            "DELETE FROM projects WHERE project_id = ?",
-                            (str(row["project_id"]),),
-                        )
-                except Exception:
-                    pass
+            stale = self._project_at_root(connection, root, exclude_id=project_id)
+            if stale is not None:
+                self._replace_project_registration(
+                    connection,
+                    str(stale["project_id"]),
+                    project_id,
+                    name,
+                    root,
+                    config_path,
+                )
+                return
 
             connection.execute(
                 """
@@ -74,51 +71,80 @@ class LauncherRepository:
     ) -> None:
         """Replace a stale ID for the same canonical project registration."""
         with self.database.connect() as connection:
-            stale = connection.execute(
-                "SELECT * FROM projects WHERE project_id = ?", (stale_project_id,)
-            ).fetchone()
-            if stale is None:
-                raise LookupError(f"Stale project registration not found: {stale_project_id}")
-            if connection.execute(
-                "SELECT 1 FROM projects WHERE project_id = ?", (project_id,)
-            ).fetchone():
-                raise ValueError(f"Project ID is already registered: {project_id}")
+            self._replace_project_registration(
+                connection,
+                stale_project_id,
+                project_id,
+                name,
+                root,
+                config_path,
+            )
 
-            # Task and HIP rows are rebuildable indexes. Deleting the stale Project
-            # cascades those rows while immutable histories are reattached below.
-            connection.execute(
-                "UPDATE activity_history SET project_id = ? WHERE project_id = ?",
-                (project_id, stale_project_id),
-            )
-            connection.execute(
-                "UPDATE open_history SET project_id = ? WHERE project_id = ?",
-                (project_id, stale_project_id),
-            )
-            connection.execute(
-                "UPDATE settings_import_history SET target_id = ? WHERE target_id = ?",
-                (project_id, stale_project_id),
-            )
-            connection.execute(
-                "DELETE FROM projects WHERE project_id = ?", (stale_project_id,)
-            )
-            connection.execute(
-                """
-                INSERT INTO projects(
-                    project_id, name, root, config_path, favorite, archived,
-                    last_accessed, missing
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    project_id,
-                    name,
-                    str(root),
-                    str(config_path),
-                    stale["favorite"],
-                    stale["archived"],
-                    _now(),
-                    int(not root.exists()),
-                ),
-            )
+    @staticmethod
+    def _replace_project_registration(
+        connection: Any,
+        stale_project_id: str,
+        project_id: str,
+        name: str,
+        root: Path,
+        config_path: Path,
+    ) -> None:
+        stale = connection.execute(
+            "SELECT * FROM projects WHERE project_id = ?", (stale_project_id,)
+        ).fetchone()
+        if stale is None:
+            raise LookupError(f"Stale project registration not found: {stale_project_id}")
+        if connection.execute(
+            "SELECT 1 FROM projects WHERE project_id = ?", (project_id,)
+        ).fetchone():
+            raise ValueError(f"Project ID is already registered: {project_id}")
+
+        connection.execute(
+            "UPDATE activity_history SET project_id = ? WHERE project_id = ?",
+            (project_id, stale_project_id),
+        )
+        connection.execute(
+            "UPDATE open_history SET project_id = ? WHERE project_id = ?",
+            (project_id, stale_project_id),
+        )
+        connection.execute(
+            "UPDATE settings_import_history SET target_id = ? WHERE target_id = ?",
+            (project_id, stale_project_id),
+        )
+        connection.execute(
+            "DELETE FROM projects WHERE project_id = ?", (stale_project_id,)
+        )
+        connection.execute(
+            """
+            INSERT INTO projects(
+                project_id, name, root, config_path, favorite, archived,
+                last_accessed, missing
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                name,
+                str(root),
+                str(config_path),
+                stale["favorite"],
+                stale["archived"],
+                _now(),
+                int(not root.exists()),
+            ),
+        )
+
+    @staticmethod
+    def _project_at_root(
+        connection: Any, root: Path, *, exclude_id: str
+    ) -> Any | None:
+        target = root.expanduser().resolve()
+        rows = connection.execute(
+            "SELECT * FROM projects WHERE project_id != ?", (exclude_id,)
+        ).fetchall()
+        for row in rows:
+            if Path(str(row["root"])).expanduser().resolve() == target:
+                return row
+        return None
 
     def set_project_favorite(self, project_id: str, favorite: bool) -> None:
         """Set the per-user favorite state for one project."""
@@ -157,10 +183,29 @@ class LauncherRepository:
     ) -> None:
         """Insert or refresh one task index record."""
         with self.database.connect() as connection:
-            connection.execute(
-                "DELETE FROM tasks WHERE project_id = ? AND name = ? AND task_id != ?",
+            stale = connection.execute(
+                "SELECT * FROM tasks WHERE project_id = ? AND name = ? AND task_id != ?",
                 (project_id, name, task_id),
-            )
+            ).fetchone()
+            if stale is not None:
+                if connection.execute(
+                    "SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)
+                ).fetchone():
+                    raise ValueError(f"Task ID is already registered: {task_id}")
+                stale_id = str(stale["task_id"])
+                connection.execute(
+                    "UPDATE activity_history SET task_id = ? WHERE task_id = ?",
+                    (task_id, stale_id),
+                )
+                connection.execute(
+                    "UPDATE open_history SET task_id = ? WHERE task_id = ?",
+                    (task_id, stale_id),
+                )
+                connection.execute(
+                    "UPDATE settings_import_history SET target_id = ? WHERE target_id = ?",
+                    (task_id, stale_id),
+                )
+                connection.execute("DELETE FROM tasks WHERE task_id = ?", (stale_id,))
             connection.execute(
                 """
                 INSERT INTO tasks(task_id, project_id, name, config_path, status, modified_at)
@@ -183,6 +228,13 @@ class LauncherRepository:
                 (project_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def task_id_exists(self, task_id: str) -> bool:
+        """Return whether a Task ID is already indexed anywhere locally."""
+        with self.database.connect() as connection:
+            return connection.execute(
+                "SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone() is not None
 
     def remove_task(self, task_id: str) -> None:
         """Remove a Task and its rebuildable HIP index rows."""

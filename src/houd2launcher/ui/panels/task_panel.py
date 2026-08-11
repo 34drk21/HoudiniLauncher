@@ -106,6 +106,7 @@ class TaskPanel(QWidget):
     package_export_requested = Signal(object)
     sdm_export_requested = Signal(object)
     delete_requested = Signal(object)
+    package_publish_requested = Signal(object)
 
     def __init__(self, resolver: PathResolver, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -276,6 +277,7 @@ class TaskPanel(QWidget):
         archived = task.status == "archived"
         menu = QMenu(self)
         actions = (
+            ("Publish Task...", lambda: self.package_publish_requested.emit(task)),
             ("Open Latest HIP", lambda: self.open_requested.emit(task)),
             ("New HIP", lambda: self.new_hip_requested.emit()),
             ("Task Settings", lambda: self.settings_requested.emit()),
@@ -295,7 +297,7 @@ class TaskPanel(QWidget):
                     else self.archive_requested.emit(task)
                 ),
             ),
-            ("Delete Task (Move to Recycle Bin)...", lambda: self.delete_requested.emit(task)),
+            ("Move Task to Trash...", lambda: self.delete_requested.emit(task)),
         )
         for label, callback in actions:
             action = menu.addAction(label)

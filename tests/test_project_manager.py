@@ -180,3 +180,29 @@ def test_readd_project_with_new_id_does_not_fail_unique_constraint(
     assert len(manager.registered()) == 1
 
 
+def test_direct_project_upsert_replaces_identity_without_losing_state(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    manager = ProjectManager(repository, resolver)
+    manager.create(project)
+    old_id = project.project_id
+    repository.set_project_favorite(old_id, True)
+    repository.set_project_archived(old_id, True)
+    repository.record_activity(old_id, "before_direct_replace")
+    replacement = ProjectSettings(name=project.name, project_root=project.project_root)
+
+    repository.upsert_project(
+        replacement.project_id,
+        replacement.name,
+        replacement.project_root,
+        resolver.resolve_project_metadata_path(project),
+    )
+
+    record = repository.list_projects(include_archived=True)[0]
+    assert record["project_id"] == replacement.project_id
+    assert record["favorite"] == 1
+    assert record["archived"] == 1
+    assert repository.history(replacement.project_id)[0]["event_type"] == "before_direct_replace"
+

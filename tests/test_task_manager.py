@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from houd2launcher.core.models import FolderDefinition, ProjectSettings, TaskSettings
+from houd2launcher.core.config import atomic_write_model, load_model
 from houd2launcher.core.path_resolver import PathResolver
 from houd2launcher.core.project_manager import ProjectManager
 from houd2launcher.core.task_manager import TaskManager
@@ -126,3 +127,54 @@ def test_delete_task_rejects_other_project(
     with pytest.raises(ValueError, match="different project"):
         TaskManager(repository, resolver).delete_permanently(other, task)
     assert resolver.resolve_task_root(project, task.name).is_dir()
+
+
+def test_normal_load_does_not_silently_reassign_foreign_task(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    ProjectManager(repository, resolver).create(project)
+    manager = TaskManager(repository, resolver)
+    task = manager.create(
+        project, TaskSettings(project_id=project.project_id, name="copied")
+    )
+    config = resolver.resolve_task_metadata_path(project, task)
+    task.project_id = "another-project-id"
+    atomic_write_model(config, task)
+
+    with pytest.raises(ValueError, match="different project"):
+        manager.load(project, config)
+    assert load_model(config, TaskSettings).project_id == "another-project-id"
+
+    repaired = manager.load(project, config, repair_project_id=True)
+    assert repaired.project_id == project.project_id
+
+
+def test_task_identity_replacement_preserves_history(
+    project: ProjectSettings,
+    repository: LauncherRepository,
+    resolver: PathResolver,
+) -> None:
+    ProjectManager(repository, resolver).create(project)
+    manager = TaskManager(repository, resolver)
+    task = manager.create(
+        project, TaskSettings(project_id=project.project_id, name="identity")
+    )
+    repository.record_activity(
+        project.project_id, "before_task_replace", task_id=task.task_id
+    )
+    replacement = TaskSettings(project_id=project.project_id, name=task.name)
+
+    repository.upsert_task(
+        replacement.task_id,
+        project.project_id,
+        replacement.name,
+        resolver.resolve_task_metadata_path(project, replacement),
+        replacement.status,
+        replacement.modified_at.isoformat(),
+    )
+
+    assert repository.task_id_exists(replacement.task_id)
+    history = repository.history(project.project_id, replacement.task_id)
+    assert history[0]["event_type"] == "before_task_replace"

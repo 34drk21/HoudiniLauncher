@@ -32,11 +32,12 @@ Included:
 - Project and task settings import/export with preview and backup
 - SQLite indexes, activity history, open history, and UI state
 - Task thumbnails from JPG or PNG images, with a wide D2 brand fallback
-- Project/Task Show Archived and Restore controls with guarded permanent deletion
+- Project/Task Show Archived, Restore, and guarded native Trash controls
 - Selected-HIP cache reference scanning through `hython`
 - Full `geo_cache` inventory grouped by Cache and Version, with HIP usage colors
 - Cache search, filters, size sorting, and guarded permanent Version deletion
-- Checksum-verified Task Package export/import; only `geo_cache` contents are omitted
+- Checksum-verified Task Package export/import with generated Cache Roles omitted
+- Shared Project/Task Package Exchange with copy-only collision handling
 - Shared-folder Cache Publish/Import with SHA-256 validation
 - SDM2.0 delivery with mandatory HIP files and selectable folders/cache versions
 - Launcher-managed expression variables shown in each Task Overview
@@ -158,8 +159,9 @@ for paths outside `geo_cache`.
 
 Use `Export Task Package...` from a Task's context menu. The resulting
 `{task}_houd2package` folder contains HIPs, HouD2 metadata, thumbnails, and
-all other Task files. Only configured `geo_cache` contents and legacy
-`.houd2/trash/caches` content are excluded; the empty geo folder is retained.
+all other Task files. Generated Cache Roles such as `geo_cache`, `vdb_cache`,
+`sim`, and `alembic`, plus legacy
+`.houd2/trash/caches` content, are excluded; the empty geo folder is retained.
 `manifest.json` records every packaged file's SHA-256 checksum.
 
 Use `Import Task Package...` from a target Project's context menu. Import first
@@ -167,6 +169,23 @@ validates paths and checksums, then previews size, excluded Roles, and portable
 Project setting differences. Existing Project settings are never overwritten.
 Name collisions create `{task}_copy`, assign a new Task ID, and rename managed
 HIP files and metadata to the imported Task name.
+
+## Project / Task Package Exchange
+
+Set a global shared folder from `File > Project / Task Exchange...` or the
+Projects panel action menu. The path is remembered for the current user.
+Right-click a Project and choose `Publish Project...`, or right-click a Task and
+choose `Publish Task...`. Publishing writes to a temporary directory, verifies
+the complete SHA-256 inventory, and only then exposes the immutable snapshot.
+
+The Exchange window supports search, Project/Task filters, Refresh, size,
+publisher, and published-time columns. Right-click an item to import it. Task
+Packages import into the currently selected Project; Project Packages prompt
+for a local parent directory. Existing Projects and Tasks are never
+overwritten. An ID or name collision creates `_copy`, `_copy2`, and so on,
+assigns new IDs, and updates managed HIP metadata. Published snapshots remain
+available after Import. Cache payload is transferred separately through Cache
+Publish / Import.
 
 ## Settings Import / Update
 
@@ -280,6 +299,13 @@ Houdini to an unrelated Python installation. Existing Houdini `PATH` and
 `PYTHONPATH` remain available for pipeline compatibility. The HDA Builder is
 more strictly isolated with `PYTHONNOUSERSITE=1` and its own `PYTHONPATH`.
 
+Every `Project Settings > Search Paths > HDA` entry is treated as a search
+root. Before Houdini starts, HouD2Launcher recursively finds directories that
+contain `.hda`, `.otl`, or license-specific asset libraries and adds those
+directories to the child process `HOUDINI_OTLSCAN_PATH`. Symlinks and junctions
+are not followed, inaccessible folders are logged, duplicates are removed, and
+the Windows or system environment is never modified.
+
 ## Data Layout
 
 ```text
@@ -302,6 +328,12 @@ more strictly isolated with `PYTHONNOUSERSITE=1` and its own `PYTHONPATH`.
 
 Project and task JSON files are authoritative. SQLite is a rebuildable local
 index used for fast display and history; JSON wins if the two disagree.
+
+Moving a Project or Task to Trash uses the operating system's native Trash
+implementation without PowerShell. If a network drive does not support native
+Trash, the item is moved to a UUID-named entry under a sibling `.trash` folder
+and the recovery location is shown in the Launcher status bar. Cache deletion
+remains an intentional permanent deletion.
 
 ## Tests
 
@@ -337,8 +369,8 @@ required. Publish a tested Setup EXE from the build PC:
 ```powershell
 .\scripts\publish_update.ps1 `
   -ChannelPath "Z:\HouD2Launcher\updates" `
-  -InstallerPath ".\dist\installer\HouD2Launcher-0.3.0-Setup.exe" `
-  -Version "0.3.0" `
+  -InstallerPath ".\dist\installer\HouD2Launcher-0.4.4-Setup.exe" `
+  -Version "0.4.4" `
   -ReleaseNotes "First installer release"
 ```
 

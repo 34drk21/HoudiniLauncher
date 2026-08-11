@@ -51,14 +51,14 @@ class FilesystemReconciler:
                         hip_count += len(self.hips.list_hips(project, task))
                     else:
                         candidates.append(candidate.name)
-                except Exception as exc:
+                except (OSError, ValueError) as exc:
                     errors.append(f"{candidate.name}: {exc}")
                 continue
             try:
-                task = self.tasks.load(project, config)
+                task = self.tasks.load(project, config, repair_project_id=True)
                 tasks.append(task)
                 hip_count += len(self.hips.list_hips(project, task))
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 errors.append(f"{candidate.name}: {exc}")
         tasks.sort(key=lambda item: item.modified_at, reverse=True)
         return ReconcileReport(

@@ -59,6 +59,8 @@ class ProjectPanel(QWidget):
     archived_visibility_changed = Signal(bool)
     favorite_requested = Signal(object, bool)
     package_import_requested = Signal(object)
+    package_publish_requested = Signal(object)
+    package_exchange_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -83,6 +85,9 @@ class ProjectPanel(QWidget):
         menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         header_menu = QMenu(menu_button)
         header_menu.addAction("Add Existing Project", self.add_project_requested.emit)
+        header_menu.addAction(
+            "Project / Task Exchange...", self.package_exchange_requested.emit
+        )
         menu_button.setMenu(header_menu)
         header.addWidget(menu_button)
         layout.addLayout(header)
@@ -159,6 +164,7 @@ class ProjectPanel(QWidget):
         archived = bool(item.data(Qt.ItemDataRole.UserRole + 2)) if item else False
         menu = QMenu(self)
         actions: list[tuple[str, object]] = [
+            ("Publish Project...", lambda: self.package_publish_requested.emit(project)),
             ("New Task", lambda: self.new_task_requested.emit()),
             ("Project Settings", lambda: self.settings_requested.emit(project)),
             ("Import Project Settings", lambda: self.import_requested.emit(project)),
@@ -182,7 +188,7 @@ class ProjectPanel(QWidget):
                 ),
             ),
             ("Remove from Launcher", lambda: self.unregister_requested.emit(project)),
-            ("Delete Project (Move to Recycle Bin)...", lambda: self.delete_requested.emit(project)),
+            ("Move Project to Trash...", lambda: self.delete_requested.emit(project)),
         ]
         for label, callback in actions:
             action = QAction(label, menu)

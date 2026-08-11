@@ -26,11 +26,16 @@ from houd2launcher.core.models import (
     TaskSettings,
 )
 from houd2launcher.core.path_resolver import PathResolver
+from houd2launcher.core.package_exchange import (
+    ExchangePackageManifest,
+    PublishedPackageRecord,
+)
 from houd2launcher.settings.exporter import build_package
 from houd2launcher.settings.importer import identify_import, preview_import
 from houd2launcher.ui.dialogs.hip_open_dialog import HipOpenDialog
 from houd2launcher.ui.dialogs.first_run_dialog import FirstRunDialog
 from houd2launcher.ui.dialogs.settings_import_dialog import SettingsImportDialog
+from houd2launcher.ui.dialogs.package_exchange_dialog import PackageExchangeDialog
 from houd2launcher.ui.panels.project_panel import ProjectPanel
 from houd2launcher.ui.panels.task_details_panel import TaskDetailsPanel
 from houd2launcher.ui.panels.task_panel import TaskPanel, default_task_thumbnail_path
@@ -67,6 +72,42 @@ def test_project_panel_select_project(tmp_path: Path) -> None:
     panel.set_projects([p1, p2])
     panel.select_project(p2)
     assert panel.current_project() == p2
+
+
+def test_package_exchange_dialog_filters_project_and_task_records(
+    tmp_path: Path,
+) -> None:
+    app = _app()
+    project_record = PublishedPackageRecord(
+        tmp_path / "project" / "exchange_manifest.json",
+        ExchangePackageManifest(
+            package_kind="project",
+            source_project_id="project-id",
+            source_project_name="Fire Show",
+            publisher_name="Supervisor",
+        ),
+    )
+    task_record = PublishedPackageRecord(
+        tmp_path / "task" / "exchange_manifest.json",
+        ExchangePackageManifest(
+            package_kind="task",
+            source_project_id="project-id",
+            source_project_name="Fire Show",
+            source_task_id="task-id",
+            source_task_name="Explosion",
+            publisher_name="Artist",
+        ),
+    )
+    dialog = PackageExchangeDialog(str(tmp_path))
+    dialog.set_records((project_record, task_record))
+    assert dialog.table.rowCount() == 2
+    dialog.kind.setCurrentText("Tasks")
+    assert dialog.table.rowCount() == 1
+    assert dialog.table.item(0, 2).text() == "Explosion"
+    dialog.search.setText("missing")
+    assert dialog.table.rowCount() == 0
+    dialog.deleteLater()
+    app.processEvents()
 
 
 
@@ -282,4 +323,3 @@ def test_settings_import_dialog_apply_button_accepts_dialog(tmp_path: Path) -> N
     assert dialog.result() == QDialog.DialogCode.Accepted
     dialog.deleteLater()
     app.processEvents()
-

@@ -22,6 +22,14 @@ from .task_manager import TaskManager
 
 _SECRET_MARKERS = ("PASSWORD", "PASS", "TOKEN", "SECRET", "API_KEY", "CREDENTIAL")
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
+_CACHE_ROLES = {
+    "geo_cache",
+    "vdb_cache",
+    "sim",
+    "simulation",
+    "alembic",
+    "abc_cache",
+}
 
 
 class TaskPackageFile(StrictModel):
@@ -95,7 +103,7 @@ class TaskPackageService:
             except (KeyError, ValueError):
                 pass
             for source in source_root.rglob("*"):
-                if source.is_symlink():
+                if _is_link(source):
                     raise PathSafetyError(f"Task Package cannot contain links: {source}")
                 resolved = source.resolve()
                 if any(_is_within(path, resolved) for path in excluded_paths):
@@ -107,7 +115,14 @@ class TaskPackageService:
                     continue
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, destination)
-                files.append(_file_entry(destination, f"task/{relative.as_posix()}"))
+
+            task_config = staging_task / ".houd2" / "task.json"
+            atomic_write_model(task_config, _portable_task(task))
+            files.extend(
+                _file_entry(path, f"task/{path.relative_to(staging_task).as_posix()}")
+                for path in sorted(staging_task.rglob("*"))
+                if path.is_file()
+            )
 
             context_path = staging / "project_context.json"
             context_path.write_text(
@@ -208,7 +223,7 @@ class TaskPackageService:
         excluded: list[tuple[str, Path]] = []
         for folder in project.folders:
             role = folder.role.casefold()
-            if folder.enabled and role == "geo_cache":
+            if folder.enabled and is_cache_role(role):
                 excluded.append(
                     (folder.role, self.resolver.resolve_houdini_folder(project, task, folder.relative_path))
                 )
@@ -244,7 +259,7 @@ class TaskPackageService:
 
     def _validate_files(self, root: Path, manifest: TaskPackageManifest) -> None:
         for path in root.rglob("*"):
-            if path.is_symlink() or not _is_within(root, path):
+            if _is_link(path) or not _is_within(root, path):
                 raise PathSafetyError(f"Task Package contains an unsafe link: {path}")
         declared: set[str] = set()
         for entry in manifest.files:
@@ -254,7 +269,7 @@ class TaskPackageService:
                 raise ValueError(f"Duplicate package path: {entry.relative_path}")
             declared.add(key)
             candidate = root.joinpath(*relative.parts)
-            if not _is_within(root, candidate) or candidate.is_symlink():
+            if not _is_within(root, candidate) or _is_link(candidate):
                 raise PathSafetyError(f"Unsafe package path: {entry.relative_path}")
             if not candidate.is_file():
                 raise FileNotFoundError(f"Package file is missing: {entry.relative_path}")
@@ -273,7 +288,10 @@ class TaskPackageService:
         self, manifest: TaskPackageManifest, project: ProjectSettings
     ) -> tuple[str, str, bool]:
         original = manifest.source_task_name
-        if not self.resolver.resolve_task_root(project, original).exists():
+        if (
+            not self.resolver.resolve_task_root(project, original).exists()
+            and not self.task_manager.repository.task_id_exists(manifest.source_task_id)
+        ):
             return original, manifest.source_task_id, False
         index = 1
         while True:
@@ -358,6 +376,24 @@ def _project_context(project: ProjectSettings) -> dict[str, object]:
     }
 
 
+def _portable_task(task: TaskSettings) -> TaskSettings:
+    copy = task.model_copy(deep=True)
+    copy.environment = {
+        name: value
+        for name, value in task.environment.items()
+        if not any(marker in name.upper() for marker in _SECRET_MARKERS)
+        and not _is_absolute_text(value)
+    }
+    copy.recommended_installation_id = None
+    return copy
+
+
+def is_cache_role(role: str) -> bool:
+    """Return whether a folder role represents generated cache payload."""
+    normalized = role.strip().casefold()
+    return normalized in _CACHE_ROLES or normalized.endswith("_cache")
+
+
 def _context_differences(
     package: dict[str, object], target: dict[str, object]
 ) -> list[str]:
@@ -407,3 +443,16 @@ def _is_within(root: Path, path: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _is_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction) and is_junction():
+        return True
+    try:
+        attributes = getattr(path.stat(follow_symlinks=False), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & 0x400)

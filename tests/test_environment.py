@@ -127,6 +127,8 @@ def test_managed_hda_paths_are_child_only_and_python_globals_are_sanitized(
     }
     before = dict(base)
     managed = tmp_path / "managed hda"
+    (managed / "otls").mkdir(parents=True)
+    (managed / "otls" / "houd2_cache.hda").write_bytes(b"hda")
 
     environment = resolver.build(
         project,
@@ -149,3 +151,25 @@ def test_managed_hda_paths_are_child_only_and_python_globals_are_sanitized(
     )
     assert environment["HOUD2_HDA_ROOT"] == str(managed)
     assert environment["HOUD2_HDA_VERSION"] == "abc123"
+
+
+def test_hda_search_paths_recursively_find_library_directories(
+    tmp_path: Path, project: ProjectSettings
+) -> None:
+    root = tmp_path / "HDA Library"
+    first = root / "department" / "fx"
+    second = first / "published" / "v2"
+    second.mkdir(parents=True)
+    first.joinpath("smoke.otl").write_bytes(b"otl")
+    second.joinpath("fire.hdalc").write_bytes(b"hda")
+    project.search_paths = SearchPathSettings(hda=[str(root), str(root)])
+    task = TaskSettings(project_id=project.project_id, name="recursive")
+
+    environment = EnvironmentResolver(PathResolver()).build(
+        project, task, _installation(tmp_path), base_environment={}
+    )
+    paths = environment["HOUDINI_OTLSCAN_PATH"].split(os.pathsep)
+
+    assert paths[:2] == [str(first), str(second)]
+    assert paths.count(str(first)) == 1
+    assert paths[-1] == "&"

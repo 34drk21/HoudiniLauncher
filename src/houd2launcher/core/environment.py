@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from collections.abc import Mapping
+from pathlib import Path
 
 from .exceptions import EnvironmentResolutionError
 from .models import HoudiniInstallation, ProjectSettings, TaskSettings
@@ -26,6 +28,10 @@ HOUDINI_AMPERSAND_PATHS = {
     "HOUDINI_ICON_PATH",
 }
 PYTHON_ENVIRONMENT_BLOCKLIST = {"PYTHONHOME", "PYTHONUSERBASE", "PYTHONSTARTUP"}
+HDA_LIBRARY_SUFFIXES = {".hda", ".otl", ".hdalc", ".hdanc", ".otllc", ".otlnc"}
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class EnvironmentResolver:
@@ -171,12 +177,14 @@ class EnvironmentResolver:
         }
         if managed_hda_root:
             managed = os.path.abspath(managed_hda_root)
-            integrations["HOUDINI_OTLSCAN_PATH"].append(os.path.join(managed, "otls"))
+            integrations["HOUDINI_OTLSCAN_PATH"].extend(
+                expand_hda_search_roots([os.path.join(managed, "otls")])
+            )
             integrations["PYTHONPATH"].append(os.path.join(managed, "python"))
         if launcher_root:
             root = os.path.abspath(launcher_root)
-            integrations["HOUDINI_OTLSCAN_PATH"].append(
-                os.path.join(root, "houdini", "otls")
+            integrations["HOUDINI_OTLSCAN_PATH"].extend(
+                expand_hda_search_roots([os.path.join(root, "houdini", "otls")])
             )
             integrations["PYTHONPATH"].append(os.path.join(root, "houdini", "python"))
         for variable, paths in integrations.items():
@@ -266,6 +274,8 @@ class EnvironmentResolver:
             if not templates:
                 continue
             paths = [self._expand_context(template, context, project, task) for template in templates]
+            if field_name == "hda":
+                paths = expand_hda_search_roots(paths)
             existing = environment.get(variable_name, "")
             if existing:
                 paths.append(existing)
@@ -304,3 +314,71 @@ class EnvironmentResolver:
             "SHOTFPS": str(task.frames.fps),
             "SIMSTARTFRAME": str(task.frames.sim_start),
         }
+
+
+def expand_hda_search_roots(roots: list[str]) -> list[str]:
+    """Return directories containing HDA libraries below configured roots."""
+    found: list[Path] = []
+    seen: set[str] = set()
+    for value in roots:
+        if not value or value == "&":
+            continue
+        root = Path(value).expanduser()
+        try:
+            root = root.resolve()
+        except OSError as exc:
+            LOGGER.warning("Cannot resolve HDA search root %s: %s", value, exc)
+            continue
+        if not root.is_dir():
+            LOGGER.warning("HDA search root is unavailable: %s", root)
+            continue
+        pending = [root]
+        while pending:
+            directory = pending.pop()
+            if _is_linked_directory(directory):
+                LOGGER.warning("Skipping linked HDA directory: %s", directory)
+                continue
+            try:
+                entries = sorted(directory.iterdir(), key=lambda item: item.name.casefold())
+            except OSError as exc:
+                LOGGER.warning("Cannot scan HDA directory %s: %s", directory, exc)
+                continue
+            contains_library = False
+            for entry in entries:
+                try:
+                    if (
+                        entry.is_file()
+                        and entry.suffix.casefold() in HDA_LIBRARY_SUFFIXES
+                    ):
+                        contains_library = True
+                        break
+                except OSError as exc:
+                    LOGGER.warning("Cannot inspect HDA library %s: %s", entry, exc)
+            if contains_library:
+                key = os.path.normcase(os.path.normpath(str(directory)))
+                if key not in seen:
+                    seen.add(key)
+                    found.append(directory)
+            children: list[Path] = []
+            for entry in entries:
+                try:
+                    if entry.is_dir() and not _is_linked_directory(entry):
+                        children.append(entry)
+                except OSError as exc:
+                    LOGGER.warning("Cannot inspect HDA path %s: %s", entry, exc)
+            pending.extend(reversed(children))
+    found.sort(key=lambda path: (len(path.parts), str(path).casefold()))
+    return [str(path) for path in found]
+
+
+def _is_linked_directory(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction) and is_junction():
+        return True
+    try:
+        attributes = getattr(path.stat(follow_symlinks=False), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & 0x400)

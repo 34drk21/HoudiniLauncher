@@ -13,6 +13,11 @@ valid blank HIP must be created.
 `database` stores rebuildable indexes and histories. Project and task settings
 remain canonical JSON next to project data.
 
+`core.package_exchange` publishes immutable, checksum-verified Project and Task
+snapshots to a user-selected shared folder. Imports always copy to a local
+Project root, never overwrite an existing identity, and keep generated Cache
+Roles in the separate Cache Exchange workflow.
+
 `api` exposes an authenticated, localhost-only Cache Catalog while the Launcher
 is running. Houdini receives its temporary URL and token through the child
 process environment; HDA code never reads the Launcher SQLite database.

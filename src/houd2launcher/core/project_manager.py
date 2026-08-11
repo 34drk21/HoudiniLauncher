@@ -7,7 +7,7 @@ from .config import atomic_write_model, load_model
 from .exceptions import DuplicateRegistrationError, PathSafetyError
 from .models import ProjectSettings, utc_now
 from .path_resolver import PathResolver
-from .trash import send_to_trash
+from .trash import TrashResult, send_to_trash
 from ..database.repositories import LauncherRepository
 
 
@@ -78,7 +78,7 @@ class ProjectManager:
         """Remove only the launcher registration, preserving all project files."""
         self.repository.remove_project(project_id)
 
-    def delete_permanently(self, project: ProjectSettings) -> Path:
+    def move_to_trash(self, project: ProjectSettings) -> TrashResult:
         """Move a validated Project root to Recycle Bin and remove its local indexes."""
         root = self.resolver.resolve_project_root(project)
         resolved = root.resolve()
@@ -123,14 +123,23 @@ class ProjectManager:
         ):
             raise ValueError("Project metadata does not match the selected Project")
 
-        send_to_trash(root)
+        result = send_to_trash(root)
         self.repository.remove_project(project.project_id)
         self.repository.record_activity(
             project.project_id,
-            "project_deleted_permanently",
-            {"name": project.name, "path": str(root)},
+            "project_moved_to_trash",
+            {
+                "name": project.name,
+                "path": str(root),
+                "method": result.method,
+                "recovery_path": str(result.recovery_path or ""),
+            },
         )
-        return root
+        return result
+
+    def delete_permanently(self, project: ProjectSettings) -> Path:
+        """Compatibility wrapper for older callers."""
+        return self.move_to_trash(project).original_path
 
     def registered(self, include_archived: bool = False) -> list[ProjectSettings]:
         """Return valid registered projects, treating JSON as authoritative."""
