@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,7 +15,13 @@ from PySide6.QtCore import (
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QCloseEvent, QDesktopServices
+from PySide6.QtGui import (
+    QCloseEvent,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -32,6 +39,7 @@ from ..core.config import atomic_write_model, backup_file
 from ..core.folder_migration import FolderMigrationPlan
 from ..core.hip_manager import HipRecord
 from ..core.models import HoudiniInstallation, ProjectSettings, TaskSettings
+from ..core.package_exchange import PublishedPackageRecord
 from ..core.update_manager import AvailableUpdate
 from ..houdini.editions import available_houdini_editions
 from ..houdini.installation_manager import HoudiniInstallationManager
@@ -126,6 +134,10 @@ class MainWindow(QMainWindow):
         self._hda_waiters: dict[str, list[Callable[[], None]]] = {}
         self._hda_warnings: set[str] = set()
         self._package_dialog: PackageExchangeDialog | None = None
+        self._dropped_package_paths: deque[Path] = deque()
+        self._dropped_package_path_keys: set[str] = set()
+        self._dropped_package_ids: set[str] = set()
+        self._dropped_package_active = False
         self._ignored_task_candidates: set[tuple[str, str]] = set()
         self._suppress_adoption_prompts = True
         self._filesystem_watcher = QFileSystemWatcher(self)
@@ -137,6 +149,7 @@ class MainWindow(QMainWindow):
         )
         self._filesystem_timer.timeout.connect(self._filesystem_changed)
         self.setWindowTitle("HouD2Launcher")
+        self.setAcceptDrops(True)
         self.resize(1480, 860)
         self.setMinimumSize(1080, 680)
         self._build_menu()
@@ -1356,6 +1369,103 @@ class MainWindow(QMainWindow):
         dialog.exec()
         self._package_dialog = None
 
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        paths = _local_drop_paths(event.mimeData())
+        supported = tuple(path for path in paths if _is_exchange_package_drop(path))
+        if supported:
+            event.acceptProposedAction()
+            self.statusBar().showMessage(
+                f"Drop to import {len(supported)} Project / Task Package(s)"
+            )
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        if any(
+            _is_exchange_package_drop(path)
+            for path in _local_drop_paths(event.mimeData())
+        ):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        paths = _local_drop_paths(event.mimeData())
+        supported = tuple(path for path in paths if _is_exchange_package_drop(path))
+        if not supported:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        unsupported = len(paths) - len(supported)
+        if unsupported:
+            QMessageBox.warning(
+                self,
+                "Unsupported Drop",
+                f"Skipped {unsupported} item(s) that are not complete "
+                "HouD2 Exchange Packages.",
+            )
+        self._enqueue_dropped_exchange_packages(supported)
+
+    def _enqueue_dropped_exchange_packages(self, paths: tuple[Path, ...]) -> None:
+        added = 0
+        for path in paths:
+            key = _path_drop_key(path)
+            if key in self._dropped_package_path_keys:
+                continue
+            self._dropped_package_path_keys.add(key)
+            self._dropped_package_paths.append(path)
+            added += 1
+        if added:
+            self.statusBar().showMessage(
+                f"Queued {added} dropped Project / Task Package(s)"
+            )
+            self._process_next_dropped_exchange_package()
+        else:
+            self.statusBar().showMessage("Dropped Package is already queued", 4000)
+
+    def _process_next_dropped_exchange_package(self) -> None:
+        if self._dropped_package_active:
+            return
+        if not self._dropped_package_paths:
+            self._dropped_package_path_keys.clear()
+            self._dropped_package_ids.clear()
+            return
+        dropped = self._dropped_package_paths.popleft()
+        self._dropped_package_active = True
+        self._run_operation(
+            f"Reading dropped Package: {dropped.name}",
+            lambda: self.context.package_exchange.inspect_package(dropped),
+            self._dropped_exchange_package_inspected,
+            failed=lambda error: self._dropped_exchange_package_failed(
+                "Cannot read dropped Package", error
+            ),
+        )
+
+    def _dropped_exchange_package_inspected(
+        self, published: PublishedPackageRecord
+    ) -> None:
+        package_id = published.manifest.package_id
+        if package_id in self._dropped_package_ids:
+            self.statusBar().showMessage(
+                f"Skipped duplicate Package: {package_id}", 5000
+            )
+            self._finish_dropped_exchange_package()
+            return
+        self._dropped_package_ids.add(package_id)
+        self._import_exchange_package(
+            published,
+            dropped=True,
+            finished=self._finish_dropped_exchange_package,
+        )
+
+    def _dropped_exchange_package_failed(self, title: str, error: str) -> None:
+        self._error(title, error)
+        self._finish_dropped_exchange_package()
+
+    def _finish_dropped_exchange_package(self) -> None:
+        self._dropped_package_active = False
+        QTimer.singleShot(0, self._process_next_dropped_exchange_package)
+
     def _package_exchange_path_changed(self, value: str) -> None:
         try:
             self.context.settings.package_exchange_path = (
@@ -1465,62 +1575,133 @@ class MainWindow(QMainWindow):
                 str(self.context.settings.package_exchange_path)
             )
 
-    def _import_exchange_package(self, published: object) -> None:
+    def _import_exchange_package(
+        self,
+        published: PublishedPackageRecord,
+        *,
+        dropped: bool = False,
+        finished: Callable[[], None] | None = None,
+    ) -> None:
         manifest = published.manifest
         if manifest.package_kind == "task":
-            if not self.current_project:
-                self._error(
-                    "Cannot import Task Package",
-                    "Select the target Project in the Launcher first.",
-                )
+            target_project = self._select_task_package_target()
+            if target_project is None:
+                if finished:
+                    finished()
                 return
-            target_project = self.current_project
             self._run_operation(
                 "Validating Task Exchange Package...",
                 lambda: self.context.package_exchange.preview_import(
                     published, target_project=target_project
                 ),
                 lambda preview: self._show_exchange_import_preview(
-                    preview, target_project
+                    preview, target_project, finished
                 ),
-                failed=lambda error: self._error("Cannot validate Task Package", error),
+                failed=lambda error: self._exchange_import_failed(
+                    "Cannot validate Task Package", error, finished
+                ),
             )
             return
 
-        initial = self.context.settings.default_project_root
-        if initial is None and self.current_project:
-            initial = self.current_project.project_root.parent
-        destination = QFileDialog.getExistingDirectory(
-            self, "Select Local Project Parent Folder", str(initial or Path.home())
-        )
-        if not destination:
-            return
-        parent = Path(destination)
+        default_root = self.context.settings.default_project_root
+        if dropped and default_root is not None:
+            parent = default_root
+        else:
+            initial = default_root
+            if initial is None and self.current_project:
+                initial = self.current_project.project_root.parent
+            destination = QFileDialog.getExistingDirectory(
+                self, "Select Local Project Parent Folder", str(initial or Path.home())
+            )
+            if not destination:
+                if finished:
+                    finished()
+                return
+            parent = Path(destination)
         self._run_operation(
             "Validating Project Exchange Package...",
             lambda: self.context.package_exchange.preview_import(
                 published, project_parent=parent
             ),
-            lambda preview: self._show_exchange_import_preview(preview, None),
-            failed=lambda error: self._error("Cannot validate Project Package", error),
+            lambda preview: self._show_exchange_import_preview(
+                preview, None, finished
+            ),
+            failed=lambda error: self._exchange_import_failed(
+                "Cannot validate Project Package", error, finished
+            ),
         )
 
+    def _select_task_package_target(self) -> ProjectSettings | None:
+        try:
+            projects = self.context.projects.registered(include_archived=False)
+        except Exception as exc:
+            self._error("Cannot load target Projects", exc)
+            return None
+        if self.current_project:
+            current = next(
+                (
+                    project
+                    for project in projects
+                    if project.project_id == self.current_project.project_id
+                ),
+                None,
+            )
+            if current is not None:
+                return current
+        if not projects:
+            self._error(
+                "Cannot import Task Package",
+                "Create or register an active Project before importing this Task.",
+            )
+            return None
+        labels = [f"{project.name} | {project.project_root}" for project in projects]
+        selected, accepted = QInputDialog.getItem(
+            self,
+            "Select Target Project",
+            "Import the dropped Task into:",
+            labels,
+            0,
+            False,
+        )
+        if not accepted:
+            return None
+        return projects[labels.index(selected)]
+
     def _show_exchange_import_preview(
-        self, preview: object, target_project: ProjectSettings | None
+        self,
+        preview: object,
+        target_project: ProjectSettings | None,
+        finished: Callable[[], None] | None = None,
     ) -> None:
         dialog = PackageImportPreviewDialog(preview, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            if finished:
+                finished()
             return
         self._run_operation(
             f"Importing {preview.target_name}...",
             lambda: self.context.package_exchange.import_package(
                 preview, target_project=target_project
             ),
-            self._exchange_package_imported,
-            failed=lambda error: self._error("Cannot import Package", error),
+            lambda result: self._exchange_package_imported(result, finished),
+            failed=lambda error: self._exchange_import_failed(
+                "Cannot import Package", error, finished
+            ),
         )
 
-    def _exchange_package_imported(self, result: object) -> None:
+    def _exchange_import_failed(
+        self,
+        title: str,
+        error: str,
+        finished: Callable[[], None] | None,
+    ) -> None:
+        self._error(title, error)
+        if finished:
+            finished()
+
+    def _exchange_package_imported(
+        self, result: object, finished: Callable[[], None] | None = None
+    ) -> None:
         if result.package_kind == "project":
             self.current_project = result.project
             self.current_task = None
@@ -1535,6 +1716,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{result.package_kind.title()} Package imported: {result.path}", 10000
         )
+        if finished:
+            finished()
 
     def export_task_package(self, task: TaskSettings) -> None:
         if not self.current_project:
@@ -2077,3 +2260,41 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
         if splitter:
             self.splitter.restoreState(QByteArray.fromBase64(splitter.encode("ascii")))
+
+
+def _local_drop_paths(mime_data: Any) -> tuple[Path, ...]:
+    if mime_data is None or not mime_data.hasUrls():
+        return ()
+    paths: list[Path] = []
+    for url in mime_data.urls():
+        if not url.isLocalFile():
+            continue
+        value = url.toLocalFile()
+        if value:
+            paths.append(Path(value))
+    return tuple(paths)
+
+
+def _is_exchange_package_drop(path: Path) -> bool:
+    if path.is_file():
+        return (
+            path.name.casefold() == "exchange_manifest.json"
+            and (path.parent / "payload").is_dir()
+        )
+    if not path.is_dir():
+        return False
+    if path.name.casefold() == "payload":
+        return (path.parent / "exchange_manifest.json").is_file()
+    return (
+        (path / "exchange_manifest.json").is_file()
+        and (path / "payload").is_dir()
+    )
+
+
+def _path_drop_key(path: Path) -> str:
+    root = path
+    if path.name.casefold() == "exchange_manifest.json" or (
+        path.is_dir() and path.name.casefold() == "payload"
+    ):
+        root = path.parent
+    return str(root.absolute()).casefold()

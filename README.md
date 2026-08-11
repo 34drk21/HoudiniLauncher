@@ -190,6 +190,12 @@ assigns new IDs, and updates managed HIP metadata. Published snapshots remain
 available after Import. Cache payload is transferred separately through Cache
 Publish / Import.
 
+You can also drag one or more complete Exchange Package folders from Explorer
+onto the Launcher. Dropping the Package folder, its `exchange_manifest.json`,
+or its `payload` folder opens the same checksum-verified Import Preview. Dropped
+Projects use the configured Default Project Root; dropped Tasks use the active
+Project, or ask for a target when no Project is selected.
+
 ## Settings Import / Update
 
 Project and Task settings exports use Settings Package schema v2. Packages

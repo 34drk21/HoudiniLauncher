@@ -138,3 +138,30 @@ def test_exchange_rejects_import_destination_inside_package(
 
     with pytest.raises(Exception, match="cannot be inside"):
         service.preview_import(published, project_parent=published.payload_root)
+
+
+def test_exchange_inspects_folder_manifest_and_payload_drop_paths(
+    project, repository, resolver, tmp_path: Path
+) -> None:
+    _, _, service, task, _ = _source(project, repository, resolver)
+    published = service.publish_task(tmp_path / "exchange", project, task)
+
+    for dropped in (
+        published.package_root,
+        published.manifest_path,
+        published.payload_root,
+    ):
+        inspected = service.inspect_package(dropped)
+        assert inspected.package_root == published.package_root
+        assert inspected.manifest.package_id == published.manifest.package_id
+
+
+def test_exchange_drop_inspection_rejects_an_ordinary_folder(
+    repository, resolver, tmp_path: Path
+) -> None:
+    _, _, service = _service(repository, resolver)
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+
+    with pytest.raises(ValueError, match="not a complete HouD2 Exchange Package"):
+        service.inspect_package(ordinary)

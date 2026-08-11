@@ -39,6 +39,7 @@ def test_handbook_contains_current_guides_and_code_reference() -> None:
     assert html.count('<details class="file-reference"') >= 40
     for required in (
         "Cache Out / Cache In HDA",
+        "Explorer drag and drop",
         "既定値は<code>$OS</code>",
         "hidden_console_options()",
         "HoudiniCacheScanner.scan()",

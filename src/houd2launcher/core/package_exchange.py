@@ -242,6 +242,22 @@ class PackageExchangeService:
             )
         )
 
+    def inspect_package(self, dropped_path: Path) -> PublishedPackageRecord:
+        """Resolve one Explorer drop to a structurally valid Exchange Package."""
+        path = dropped_path.expanduser()
+        _reject_link(path)
+        if path.is_file() and path.name.casefold() == "exchange_manifest.json":
+            package_root = path.parent
+        elif (
+            path.is_dir()
+            and path.name.casefold() == "payload"
+            and (path.parent / "exchange_manifest.json").is_file()
+        ):
+            package_root = path.parent
+        else:
+            package_root = path
+        return self._read_record(package_root)
+
     def preview_import(
         self,
         published: PublishedPackageRecord,
@@ -433,6 +449,7 @@ class PackageExchangeService:
         root = package_root.expanduser().resolve()
         manifest_path = root / "exchange_manifest.json"
         raw_payload = root / "payload"
+        _reject_link(manifest_path)
         _reject_link(raw_payload)
         payload = raw_payload.resolve()
         if not manifest_path.is_file() or not payload.is_dir():

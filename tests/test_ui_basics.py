@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QMimeData, QUrl
 from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,6 +39,12 @@ from houd2launcher.ui.dialogs.hip_open_dialog import HipOpenDialog
 from houd2launcher.ui.dialogs.first_run_dialog import FirstRunDialog
 from houd2launcher.ui.dialogs.settings_import_dialog import SettingsImportDialog
 from houd2launcher.ui.dialogs.package_exchange_dialog import PackageExchangeDialog
+from houd2launcher.ui.main_window import (
+    MainWindow,
+    _is_exchange_package_drop,
+    _local_drop_paths,
+    _path_drop_key,
+)
 from houd2launcher.ui.panels.project_panel import ProjectPanel
 from houd2launcher.ui.panels.task_details_panel import TaskDetailsPanel
 from houd2launcher.ui.panels.task_panel import TaskPanel, default_task_thumbnail_path
@@ -108,6 +117,70 @@ def test_package_exchange_dialog_filters_project_and_task_records(
     assert dialog.table.rowCount() == 0
     dialog.deleteLater()
     app.processEvents()
+
+
+def test_exchange_package_drop_recognizes_supported_explorer_paths(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package"
+    payload = package / "payload"
+    payload.mkdir(parents=True)
+    manifest = package / "exchange_manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+    mime = QMimeData()
+    mime.setUrls(
+        [
+            QUrl.fromLocalFile(str(package)),
+            QUrl.fromLocalFile(str(manifest)),
+            QUrl.fromLocalFile(str(payload)),
+            QUrl("https://example.com/package"),
+        ]
+    )
+
+    assert _local_drop_paths(mime) == (package, manifest, payload)
+    assert all(
+        _is_exchange_package_drop(path) for path in (package, manifest, payload)
+    )
+    assert not _is_exchange_package_drop(ordinary)
+    assert len({_path_drop_key(path) for path in (package, manifest, payload)}) == 1
+
+
+def test_exchange_drop_queue_deduplicates_package_forms_and_keeps_other_packages(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first"
+    (first / "payload").mkdir(parents=True)
+    (first / "exchange_manifest.json").write_text("{}", encoding="utf-8")
+    second = tmp_path / "second"
+    (second / "payload").mkdir(parents=True)
+    (second / "exchange_manifest.json").write_text("{}", encoding="utf-8")
+    processed: list[bool] = []
+    messages: list[str] = []
+    host = SimpleNamespace(
+        _dropped_package_path_keys=set(),
+        _dropped_package_paths=deque(),
+        statusBar=lambda: SimpleNamespace(
+            showMessage=lambda *values: messages.append(str(values[0]))
+        ),
+        _process_next_dropped_exchange_package=lambda: processed.append(True),
+    )
+
+    MainWindow._enqueue_dropped_exchange_packages(
+        host,
+        (
+            first,
+            first / "exchange_manifest.json",
+            first / "payload",
+            second,
+        ),
+    )
+
+    assert list(host._dropped_package_paths) == [first, second]
+    assert len(host._dropped_package_path_keys) == 2
+    assert processed == [True]
+    assert messages == ["Queued 2 dropped Project / Task Package(s)"]
 
 
 
