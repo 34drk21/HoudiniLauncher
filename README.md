@@ -98,6 +98,9 @@ Cache Out nodes are red until a Cache Version completes, then green. Cache In
 nodes are green when reading the latest available Version, yellow when reading
 an older Version, and red when unresolved or missing.
 
+After a Cache Out Version completes, `Create Cache In` creates a sibling Cache
+In node and fixes it to that exact Project, Task, Cache name, and Version.
+
 ### Building the HDA Library Manually
 
 Normal workstations use the automatic builder above. For development, the

@@ -138,10 +138,15 @@ def run(root: Path) -> None:
 
         hou.setFrame(int(manifest["frame"]["start"]) + 10)
 
-        cache_in = container.createNode("houd2::cache_in::1.0", "cache_in")
-        for name, value in (("project_id", "project-test"), ("task_id", "task-test"), ("cache_name", "box_main")):
-            cache_in.parm(name).deleteAllKeyframes()
-            cache_in.parm(name).set(value)
+        cache_out.parm("create_cache_in").pressButton()
+        cache_in = container.node("cache_out_cache_in")
+        assert cache_in is not None
+        assert cache_in.evalParm("project_id") == "project-test"
+        assert cache_in.evalParm("task_id") == "task-test"
+        assert cache_in.evalParm("cache_name") == "box_main"
+        assert cache_in.evalParm("version_mode") == 1
+        assert str(cache_in.evalParm("specific_version")) == "1"
+        assert cache_in.evalParm("resolved_cache_id") == manifest["cache_id"]
         update_info(cache_in)
         assert cache_in.parm("project_id").menuItems() == ("project-test",)
         assert cache_in.parm("task_id").menuItems() == ("task-test",)
@@ -176,7 +181,7 @@ def run(root: Path) -> None:
         hou.hipFile.save(str(saved_hip))
         hou.hipFile.clear(suppress_save_prompt=True)
         hou.hipFile.load(str(saved_hip), suppress_save_prompt=True, ignore_load_warnings=True)
-        loaded_cache_in = hou.node("/obj/houd2_integration_test/cache_in")
+        loaded_cache_in = hou.node("/obj/houd2_integration_test/cache_out_cache_in")
         assert loaded_cache_in is not None
         loaded_reference = probe._houd2_cache_in_reference(loaded_cache_in)
         assert loaded_reference is not None

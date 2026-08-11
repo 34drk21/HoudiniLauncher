@@ -25,6 +25,9 @@ def update_preview(kwargs):
 
 def open_cache_folder(kwargs):
     return _impl.open_cache_folder(kwargs)
+
+def create_cache_in(kwargs):
+    return _impl.create_cache_in(kwargs)
 """
 
 CACHE_IN_MODULE = """from houd2_cache import cache_in as _impl
@@ -164,8 +167,13 @@ def _cache_out_parameters() -> hou.ParmTemplateGroup:
     open_folder = _button(
         "open_cache_folder", "Open Cache Folder", _callback("open_cache_folder")
     )
+    create_cache_in = _button(
+        "create_cache_in", "Create Cache In", _callback("create_cache_in"),
+        "Creates a sibling Cache In node locked to the Cache Version last written by this node.",
+    )
     for parm in _join(save, current, open_folder):
         cache.addParmTemplate(parm)
+    cache.addParmTemplate(create_cache_in)
     cache.addParmTemplate(_readonly("status", "Status", "Not saved"))
     caching.addParmTemplate(cache)
 

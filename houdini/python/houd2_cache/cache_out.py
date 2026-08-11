@@ -66,6 +66,57 @@ def open_cache_folder(kwargs: dict[str, Any]) -> None:
     _open_folder(target)
 
 
+def create_cache_in(kwargs: dict[str, Any]) -> Any:
+    """Create a sibling Cache In fixed to this node's last completed Version."""
+    import hou
+
+    node = kwargs["node"]
+    manifest_value = str(node.evalParm("manifest_path") or "").strip()
+    if not manifest_value:
+        raise RuntimeError("Save a Cache Version before creating Cache In")
+    manifest_path = Path(manifest_value)
+    if not manifest_path.is_file():
+        raise RuntimeError(f"Saved Cache Manifest was not found: {manifest_path}")
+    manifest = load_manifest(manifest_path)
+    if str(manifest.get("status", "")).casefold() != "complete":
+        raise RuntimeError("Cache In can only be created for a complete Cache Version")
+
+    parent = node.parent()
+    if parent is None:
+        raise RuntimeError("Cache In cannot be created outside a SOP network")
+    cache_in = parent.createNode("houd2::cache_in::1.0")
+    try:
+        cache_in.setName(f"{node.name()}_cache_in", unique_name=True)
+        for name, value in (
+            ("project_id", str(manifest["project_id"])),
+            ("task_id", str(manifest["task_id"])),
+            ("cache_name", str(manifest["name"])),
+            ("version_mode", 1),
+            ("specific_version", str(int(manifest["version"]))),
+            ("resolved_cache_id", str(manifest["cache_id"])),
+        ):
+            _set_unkeyed(cache_in, name, value)
+
+        cache_in.setPosition(node.position() + hou.Vector2(3.5, 0.0))
+        cache_in.setSelected(True, clear_all_selected=True)
+
+        # Refresh display fields after every selection parm has been committed.
+        from .cache_in import update_info
+
+        update_info(cache_in)
+        try:
+            hou.ui.setStatusMessage(
+                f"Created {cache_in.path()} for {manifest['name']} "
+                f"v{int(manifest['version']):03d}"
+            )
+        except Exception:
+            pass
+        return cache_in
+    except Exception:
+        cache_in.destroy()
+        raise
+
+
 def cook_marker(python_sop: Any) -> None:
     node = python_sop.parent()
     geometry = python_sop.geometry()
@@ -175,6 +226,14 @@ def _set(node: Any, name: str, value: object) -> None:
     parm = node.parm(name)
     if parm is not None:
         parm.set(value)
+
+
+def _set_unkeyed(node: Any, name: str, value: object) -> None:
+    parm = node.parm(name)
+    if parm is None:
+        raise RuntimeError(f"Created Cache In is missing parameter: {name}")
+    parm.deleteAllKeyframes()
+    parm.set(value)
 
 
 def _set_node_color(node: Any, state: str) -> None:
